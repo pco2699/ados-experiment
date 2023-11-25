@@ -101,6 +101,10 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         auto size = sizes[i];
         auto iters = iterations[i];
 
+        //Added for bandwidth
+        float total_seconds = 0.0f;
+        float total_bandwidth = 0.0f;
+
         float* cpu_data = new float[size];
 
         float* data;
@@ -122,6 +126,11 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             RingAllreduce(data, size, &output);
             seconds += timer.seconds();
 
+            // Bandwidth calculation
+            size_t total_data_transferred = 2 * size * sizeof(float); // total data in bytes
+            float bandwidth = total_data_transferred / seconds; // bandwidth in bytes per second
+            total_bandwidth += bandwidth;            
+
             err = cudaMemcpy(cpu_data, output, sizeof(float) * size, cudaMemcpyDeviceToHost);
             if(err != cudaSuccess) { throw std::runtime_error("cudaMemcpy failed with an error"); }
 
@@ -136,11 +145,18 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             if(err != cudaSuccess) { throw std::runtime_error("cudaFree failed with an error"); }
         }
         if(mpi_rank == 0) {
-            std::cout << "Verified allreduce for size "
-                << size
-                << " ("
-                << seconds / iters
-                << " per iteration)" << std::endl;
+
+            float average_time = total_seconds / iters;
+            float average_bandwidth = total_bandwidth / iters;
+            std::cout << "Verified allreduce for size " << size
+                      << " (Average time: " << average_time << " seconds per iteration, "
+                      << "Average Bandwidth: " << average_bandwidth << " Bytes/second)" << std::endl;
+                    
+            // std::cout << "Verified allreduce for size " 
+            //     << size
+            //     << " ("
+            //     << seconds / iters
+            //     << " per iteration)" << std::endl;
         }
 
         err = cudaFree(data);
