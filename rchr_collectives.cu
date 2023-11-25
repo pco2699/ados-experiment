@@ -8,7 +8,7 @@
 #include <cuda.h>
 #include <mpi.h>
 
-#include "collectives.h"
+#include "rchr_collectives.h"
 
 struct MPIGlobalState {
     // The CUDA device to run on, or -1 for CPU-only.
@@ -231,7 +231,7 @@ std::vector<size_t> AllgatherInputLengths(int size, size_t this_rank_length) {
  * (assuming no latency in connections) is constrained by the slowest interconnect between the nodes.
  *
  */
-void RingAllreduce(float* data, size_t length, float** output_ptr) {
+void RecursiveAllreduce(float* data, size_t length, float** output_ptr) {
     // Get MPI size and rank.
     int rank;
     int mpi_error = MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -349,7 +349,7 @@ void RingAllreduce(float* data, size_t length, float** output_ptr) {
 //
 // For more information on the ring allgather, read the documentation for the
 // ring allreduce, which includes a ring allgather as the second stage.
-void RingAllgather(float* data, size_t length, float** output_ptr) {
+void RecursiveAllgather(float* data, size_t length, float** output_ptr) {
     // Get MPI size and rank.
     int rank;
     int mpi_error = MPI_Comm_rank(MPI_COMM_WORLD, &rank);
