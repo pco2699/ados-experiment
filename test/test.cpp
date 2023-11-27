@@ -60,7 +60,7 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
     }
 }
 
-void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterations) {
+void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterations, int num_gpus) {
     // Get the local rank, which gets us the GPU we should be using.
     //
     // We must do this before initializing MPI, because initializing MPI requires having the right
@@ -83,7 +83,8 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
 
     // Assume that the environment variable has an integer in it.
     int mpi_local_rank = std::stoi(std::string(env_str));
-    InitCollectives(mpi_local_rank);
+    int gpu_to_use = mpi_local_rank % num_gpus;
+    InitCollectives(gpu_to_use);
 
     // Get the MPI size and rank.
     int mpi_size;
@@ -100,6 +101,10 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
     for(size_t i = 0; i < sizes.size(); i++) {
         auto size = sizes[i];
         auto iters = iterations[i];
+
+        //Added for bandwidth
+        float total_seconds = 0.0f;
+        float total_bandwidth = 0.0f;
 
         float* cpu_data = new float[size];
 
@@ -122,6 +127,11 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             RingAllreduce(data, size, &output);
             seconds += timer.seconds();
 
+            // Bandwidth calculation
+            size_t total_data_transferred = 2 * size * sizeof(float); // total data in bytes
+            float bandwidth = total_data_transferred / seconds; // bandwidth in bytes per second
+            total_bandwidth += bandwidth;            
+
             err = cudaMemcpy(cpu_data, output, sizeof(float) * size, cudaMemcpyDeviceToHost);
             if(err != cudaSuccess) { throw std::runtime_error("cudaMemcpy failed with an error"); }
 
@@ -136,11 +146,18 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             if(err != cudaSuccess) { throw std::runtime_error("cudaFree failed with an error"); }
         }
         if(mpi_rank == 0) {
-            std::cout << "Verified allreduce for size "
-                << size
-                << " ("
-                << seconds / iters
-                << " per iteration)" << std::endl;
+
+            float average_time = total_seconds / iters;
+            float average_bandwidth = total_bandwidth / iters;
+            std::cout << "Verified allreduce for size " << size
+                      << " (Average time: " << average_time << " seconds per iteration, "
+                      << "Average Bandwidth: " << average_bandwidth << " Bytes/second)" << std::endl;
+                    
+            // std::cout << "Verified allreduce for size " 
+            //     << size
+            //     << " ("
+            //     << seconds / iters
+            //     << " per iteration)" << std::endl;
         }
 
         err = cudaFree(data);
@@ -169,11 +186,13 @@ int main(int argc, char** argv) {
         100, 50, 10, 1
     };
 
+    int num_gpus = 2;
+
     // Test on either CPU and GPU.
     if(input == "cpu") {
         TestCollectivesCPU(buffer_sizes, iterations);
     } else if(input == "gpu") {
-        TestCollectivesGPU(buffer_sizes, iterations);
+        TestCollectivesGPU(buffer_sizes, iterations, num_gpus);
     } else {
         std::cerr << "Unknown device type: " << input << std::endl
                   << "Usage: ./allreduce-test (cpu|gpu)" << std::endl;
