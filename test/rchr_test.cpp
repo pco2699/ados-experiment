@@ -7,7 +7,7 @@
 #include <iostream>
 #include <vector>
 
-#include "rh_collectives.h"
+#include "rchr_collectives.h"
 
 void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterations) {
     // Initialize on CPU (no GPU device ID).
