@@ -11,6 +11,25 @@
 #include <cuda_runtime.h>
 #include <iostream>
 
+// Memory checking function
+void checkGPUMemory(const std::string& stage) {
+    size_t free_byte;
+    size_t total_byte;
+    cudaError_t cuda_status = cudaMemGetInfo(&free_byte, &total_byte);
+
+    if (cudaSuccess != cuda_status){
+        std::cerr << "Error: cudaMemGetInfo fails, " << cudaGetErrorString(cuda_status) << std::endl;
+        exit(1);
+    }
+
+    double free_db = (double)free_byte;
+    double total_db = (double)total_byte;
+    double used_db = total_db - free_db;
+    std::cout << "GPU memory usage at " << stage << ": used = " << used_db / 1024.0 / 1024.0 
+              << " MB, free = " << free_db / 1024.0 / 1024.0 
+              << " MB, total = " << total_db / 1024.0 / 1024.0 << " MB" << std::endl;
+}
+
 void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterations) {
     // Initialize on CPU (no GPU device ID).
     InitCollectives(NO_DEVICE);
@@ -169,25 +188,6 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         delete[] cpu_data;
         checkGPUMemory("After operation for size " + std::to_string(size));
     }
-}
-
-// Memory checking function
-void checkGPUMemory(const std::string& stage) {
-    size_t free_byte;
-    size_t total_byte;
-    cudaError_t cuda_status = cudaMemGetInfo(&free_byte, &total_byte);
-
-    if (cudaSuccess != cuda_status){
-        std::cerr << "Error: cudaMemGetInfo fails, " << cudaGetErrorString(cuda_status) << std::endl;
-        exit(1);
-    }
-
-    double free_db = (double)free_byte;
-    double total_db = (double)total_byte;
-    double used_db = total_db - free_db;
-    std::cout << "GPU memory usage at " << stage << ": used = " << used_db / 1024.0 / 1024.0 
-              << " MB, free = " << free_db / 1024.0 / 1024.0 
-              << " MB, total = " << total_db / 1024.0 / 1024.0 << " MB" << std::endl;
 }
 
 // Test program for baidu-allreduce collectives, should be run using `mpirun`.
