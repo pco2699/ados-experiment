@@ -8,6 +8,9 @@
 #include <iostream>
 #include <vector>
 
+#include <cuda_runtime.h>
+#include <iostream>
+
 void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterations) {
     // Initialize on CPU (no GPU device ID).
     InitCollectives(NO_DEVICE);
@@ -73,6 +76,10 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
     //
     // Remember that in order for this to work, you must have a GPU-enabled CUDA-aware MPI build.
     // Otherwise, this will result in a segfault, when MPI tries to read from a GPU memory pointer.
+
+    // Check and print GPU memory usage before the operation
+    checkGPUMemory("Before operation for size " + std::to_string(size));
+
     char* env_str = std::getenv("OMPI_COMM_WORLD_LOCAL_RANK");
     if(env_str == NULL) {
         env_str = std::getenv("SLURM_LOCALID");
@@ -125,7 +132,9 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             float* output;
             timer.start();
             RingAllreduce(data, size, &output);
-            seconds += timer.seconds();
+            float iteration_time = timer.seconds();
+            seconds += iteration_time;
+            total_seconds += iteration_time;
 
             // Bandwidth calculation
             size_t total_data_transferred = 2 * size * sizeof(float); // total data in bytes
@@ -152,24 +161,39 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             std::cout << "Verified allreduce for size " << size
                       << " (Average time: " << average_time << " seconds per iteration, "
                       << "Average Bandwidth: " << average_bandwidth << " Bytes/second)" << std::endl;
-                    
-            // std::cout << "Verified allreduce for size " 
-            //     << size
-            //     << " ("
-            //     << seconds / iters
-            //     << " per iteration)" << std::endl;
         }
 
         err = cudaFree(data);
         if(err != cudaSuccess) { throw std::runtime_error("cudaFree failed with an error"); }
         delete[] cpu_data;
     }
+    // Check and print GPU memory usage after the operation
+    checkGPUMemory("After operation for size " + std::to_string(size));
+}
+
+// Memory checking function
+void checkGPUMemory(const std::string& stage) {
+    size_t free_byte;
+    size_t total_byte;
+    cudaError_t cuda_status = cudaMemGetInfo(&free_byte, &total_byte);
+
+    if (cudaSuccess != cuda_status){
+        std::cerr << "Error: cudaMemGetInfo fails, " << cudaGetErrorString(cuda_status) << std::endl;
+        exit(1);
+    }
+
+    double free_db = (double)free_byte;
+    double total_db = (double)total_byte;
+    double used_db = total_db - free_db;
+    std::cout << "GPU memory usage at " << stage << ": used = " << used_db / 1024.0 / 1024.0 
+              << " MB, free = " << free_db / 1024.0 / 1024.0 
+              << " MB, total = " << total_db / 1024.0 / 1024.0 << " MB" << std::endl;
 }
 
 // Test program for baidu-allreduce collectives, should be run using `mpirun`.
 int main(int argc, char** argv) {
     if(argc != 2) {
-        std::cerr << "Usage: ./allreduce-test (cpu|gpu)" << std::endl;
+        std::cerr << "Usage: ring-allreduce-test (cpu|gpu)" << std::endl;
         return 1;
     }
     std::string input(argv[1]);
