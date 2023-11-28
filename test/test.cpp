@@ -78,7 +78,6 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
     // Otherwise, this will result in a segfault, when MPI tries to read from a GPU memory pointer.
 
     // Check and print GPU memory usage before the operation
-    checkGPUMemory("Before operation for size " + std::to_string(size));
 
     char* env_str = std::getenv("OMPI_COMM_WORLD_LOCAL_RANK");
     if(env_str == NULL) {
@@ -108,6 +107,8 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
     for(size_t i = 0; i < sizes.size(); i++) {
         auto size = sizes[i];
         auto iters = iterations[i];
+
+        checkGPUMemory("Before operation for size " + std::to_string(size));
 
         //Added for bandwidth
         float total_seconds = 0.0f;
@@ -166,9 +167,8 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         err = cudaFree(data);
         if(err != cudaSuccess) { throw std::runtime_error("cudaFree failed with an error"); }
         delete[] cpu_data;
+        checkGPUMemory("After operation for size " + std::to_string(size));
     }
-    // Check and print GPU memory usage after the operation
-    checkGPUMemory("After operation for size " + std::to_string(size));
 }
 
 // Memory checking function
@@ -193,7 +193,7 @@ void checkGPUMemory(const std::string& stage) {
 // Test program for baidu-allreduce collectives, should be run using `mpirun`.
 int main(int argc, char** argv) {
     if(argc != 2) {
-        std::cerr << "Usage: ring-allreduce-test (cpu|gpu)" << std::endl;
+        std::cerr << "Usage: allreduce-ring-test (cpu|gpu)" << std::endl;
         return 1;
     }
     std::string input(argv[1]);
