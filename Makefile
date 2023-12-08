@@ -1,23 +1,17 @@
-# Check that MPI path exists.
-ifeq ("$(wildcard $(MPI_ROOT))","")
-$(error Could not find MPI in "$(MPI_ROOT)")
-endif
-
-# Check that CUDA path exists.
-ifeq ("$(wildcard $(CUDA_ROOT))","")
-$(error Could not find CUDA in "$(CUDA_ROOT)")
-endif
-
 CC:=mpic++
 NVCC:=nvcc
 LDFLAGS:=-L$(CUDA_ROOT)/lib64 -L$(MPI_ROOT)/lib -lcudart -lmpi -DOMPI_SKIP_MPICXX=
 CFLAGS:=-std=c++11 -I$(MPI_ROOT)/include -I. -I$(CUDA_ROOT)/include -DOMPI_SKIP_MPICXX=
-EXE_NAME:=allreduce-test
+
+RING_EXE_NAME:=allreduce-ring-test
+DOUBLE_TREE_EXE_NAME:=allreduce-double-tree-test
+RECURSIVE_EXE_NAME:=allreduce-recursive-test
+
 SRC:=$(wildcard *.cpp test/*.cpp)
 CU_SRC:=$(wildcard *.cu)
 OBJS:=$(SRC:.cpp=.o) $(CU_SRC:.cu=.o)
 
-all: $(EXE_NAME)
+all: $(RING_EXE_NAME) $(RECURSIVE_EXE_NAME)
 
 %.o: %.cpp
 	$(CC) -c $(CFLAGS) $< -o $@
@@ -25,11 +19,23 @@ all: $(EXE_NAME)
 %.o: %.cu
 	$(NVCC) -c $(CFLAGS) $< -o $@
 
-$(EXE_NAME): $(OBJS)
-	$(CC) -o $(EXE_NAME) $(LDFLAGS) $^ $(LDFLAGS)
+$(RING_EXE_NAME): collectives.o test/test.o timer.o
+	$(CC) -o $@ $(LDFLAGS) $^ $(LDFLAGS)
 
-test: $(EXE_NAME)
-	$(EXE_NAME)
+$(DOUBLE_TREE_EXE_NAME): double_tree_collectives.o test/double_tree_test.o timer.o
+	$(CC) -o $@ $(LDFLAGS) $^ $(LDFLAGS)
+
+$(RECURSIVE_EXE_NAME): rchr_collectives.o test/rchr_test.o timer.o
+	$(CC) -o $@ $(LDFLAGS) $^ $(LDFLAGS)
+
+ring-test: $(RING_EXE_NAME)
+	$<
+
+dbtree-test: $(DOUBLE_TREE_EXE_NAME)
+	$<
+
+rchr-test: $(RECURSIVE_EXE_NAME)
+	$<
 
 clean:
-	rm -f *.o test/*.o $(EXE_NAME)
+	rm -f *.o test/*.o $(RING_EXE_NAME) $(DOUBLE_TREE_EXE_NAME) $(RECURSIVE_EXE_NAME)

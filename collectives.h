@@ -15,7 +15,7 @@
  *    void RingAllreduce(float* data, size_t length, float** output);
  *    void RingAllgather(float* data, size_t length, float** output);
  *
- */
+ */ 
 
 // Initialize the library, including MPI and if necessary the CUDA device.
 // If device == -1, no GPU is used; otherwise, the device specifies which CUDA
@@ -32,4 +32,5 @@ void RingAllreduce(float* data, size_t length, float** output);
 // written into `output`.
 void RingAllgather(float* data, size_t length, float** output);
 
-#endif /* ifndef BAIDU_ALLREDUCE_COLLECTIVES_H_ */
+#endif /* ifndef BAIDU_ALLREDUCE_COLLECTIVES_H_ 
+*/
