@@ -9,7 +9,7 @@
 #include <cuda.h>
 #include <mpi.h>
 
-#include "collectives.h"
+#include "doubletree_collectives.h"
 
 struct MPIGlobalState
 {
@@ -33,36 +33,44 @@ public:
 
     Node(int rank, Node *p, Node *l, Node *r)
         : rank(rank), parent(p), left(l), right(r) {}
-    
+
     void printLevelOrder() const;
 
-    static Node* createTreeWithLessValue(Node* root, Node* parent) {
-        if (root == nullptr) {
+    static Node *createTreeWithLessValue(Node *root, Node *parent, int size)
+    {
+        if (root == nullptr)
+        {
             return nullptr;
         }
 
-        // Create a new node with value one less than the root
-        Node* newNode = new Node(root->rank - 1, parent, nullptr, nullptr);
+        Node *newNode;
+        if (root-> rank == 0) {
+            newNode = new Node(size-1, nullptr, nullptr, nullptr);
+        } else {
+            newNode = new Node(root->rank - 1, parent, nullptr, nullptr);
+        }
 
         // Recursively do the same for the left and right subtrees
-        newNode->left = createTreeWithLessValue(root->left, parent);
-        newNode->right = createTreeWithLessValue(root->right, parent);
+        newNode->left = createTreeWithLessValue(root->left, parent, size);
+        newNode->right = createTreeWithLessValue(root->right, parent, size);
 
         return newNode;
     }
 };
 
-void Node::printLevelOrder() const {
+void Node::printLevelOrder() const
+{
     // Create a queue for level order traversal
-    std::queue<const Node*> q;
+    std::queue<const Node *> q;
 
     // Enqueue root (the calling object represents the root)
     q.push(this);
-
-    while (!q.empty()) {
+    std::cout << "Printing level order traversal. Root rank is "<< q.front()->rank << "\n";
+    while (!q.empty())
+    {
         // Print front of queue and remove it from queue
-        const Node* current = q.front();
-        std::cout << current->rank << " ";
+        const Node *current = q.front();
+        std::cout<<current->rank<<" ";
         q.pop();
 
         // Enqueue left child
@@ -73,19 +81,31 @@ void Node::printLevelOrder() const {
         if (current->right != nullptr)
             q.push(current->right);
     }
+    std::cout<<"\n";
 }
 
-Node* search(struct Node* root, int key)
+Node *search(struct Node *root, int key)
 {
+    // std::cout<<"Calling search with key="<<key<<"and root->rank="<<root->rank<<"\n";
     // Base Cases: root is null or key is present at root
-    if (root == NULL || root->rank == key)
+    if (root == NULL) {
+        // std::cout<<"Not Found:"<<key<<"\n";
         return root;
+    }
+    
+    if (root->rank == key) {
+        // std::cout<<"Found here\n";    
+        return root;
+    }
 
     // Key is greater than root's key
-    if (root->rank < key)
+    if (root->rank < key) {
+        // std::cout <<"Moving right\n";
         return search(root->right, key);
+    }
 
     // Key is smaller than root's key
+    // std::cout <<"Moving left\n";
     return search(root->left, key);
 }
 // MPI relies on global state for most of its internal operations, so we cannot
@@ -98,7 +118,7 @@ static MPIGlobalState global_state;
 // device should be used. All data passed to other functions must be on that device.
 //
 // An exception is thrown if MPI or CUDA cannot be initialized.
-void InitCollectives(int device)
+void DoubleTreeCollectives(int device)
 {
     if (device < 0)
     {
@@ -248,37 +268,51 @@ std::vector<size_t> AllgatherInputLengths(int size, size_t this_rank_length)
 }
 
 // size must be a power of 2
-Node* constructFirstTree(int size)
+Node *constructFirstTree(int size)
 {
     // Node* leafs = new arr
- 
-    std::vector<Node*> level;
+
+    // std::cout << "Constructing tree with size="<<size<<"\n";
+    std::vector<Node *> level;
 
     int diff = 2;
 
-    for (int i=1;i<size;i=i+diff) {
-        level.push_back(new Node(i, nullptr, nullptr, nullptr));        
+    for (int i = 1; i < size; i = i + diff)
+    {
+        level.push_back(new Node(i, nullptr, nullptr, nullptr));
     }
-    
-    diff = diff*2;
-    while (diff < size){
+    // std::cout << level.size();
 
-        std::vector<Node*> prevLevel = level;
+    for (const auto& node: level) {
+        std::cout << node-> rank << " ";
+    }
+    diff = diff * 2;
+
+    while (diff <= size)
+    {
+
+        std::vector<Node *> prevLevel = level;
         level.clear();
 
-        for (int i = 0; i < prevLevel.size()-1; i+=2) {
-            Node* node = new Node(prevLevel[i]->rank + diff/2, nullptr, prevLevel[i], prevLevel[i+1]);
+        for (int i = 0; i < prevLevel.size() - 1; i += 2)
+        {
+            Node *node = new Node(prevLevel[i]->rank + diff / 4, nullptr, prevLevel[i], prevLevel[i + 1]);
             level.push_back(node);
             prevLevel[i]->parent = node;
-            prevLevel[i+1]->parent = node; 
+            prevLevel[i + 1]->parent = node;
         }
 
-        diff = diff*2;
+        diff = diff * 2;
+        // for (const auto& node: level) {
+        //     std::cout << node-> rank << " ";
+        // }
+        // std::cout << "\n";
     }
-    // level[0]->printLevelOrder();
-    return level[0];
-}
 
+    Node* root = new Node(0, nullptr, nullptr, level[0]);
+    level[0]-> parent = root;
+    return root;
+}
 
 void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
 {
@@ -338,21 +372,45 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
     // the first segment.
     float *buffer = alloc(segment_sizes[0]);
 
-    Node* firstTree = constructFirstTree(size);
-    Node* secondTree = firstTree->createTreeWithLessValue(firstTree, nullptr);
+    Node *firstTree = constructFirstTree(size);
+    Node *secondTree = firstTree->createTreeWithLessValue(firstTree, nullptr, size);
 
-    Node* nodeInFirstTree = search(firstTree, rank);
-    Node* nodeInSecondTree = search(secondTree, rank);
+    // firstTree->printLevelOrder();
 
-    MPI_Status recv_status;
-    MPI_Request recv_req1;
-    MPI_Request recv_req2;
+    Node *nodeInFirstTree;
+    Node *nodeInSecondTree;
+
+    if (rank == 0) {
+        nodeInFirstTree = firstTree;
+        // std::cout << "Searching 2nd tree\n";
+        nodeInSecondTree = search(secondTree->right, rank);
+    } else if (rank == size - 1) {
+        // std::cout << "Searching 1st tree\n";
+        nodeInFirstTree = search(firstTree->right, rank);
+        nodeInSecondTree = secondTree;
+    } else {
+        // std::cout << "Searching 1st tree\n";
+        nodeInFirstTree = search(firstTree->right, rank);
+        // std::cout << "Searching 2nd tree\n";
+        nodeInSecondTree = search(secondTree->right, rank);
+    }
+
+    // std::cout << "Searched rank="<< rank << ". Found:" <<nodeInFirstTree->rank << "\n";
+    // std::cout << "Searched rank="<< rank << ". Found:" <<nodeInSecondTree->rank << "\n";
+    
+    // MPI_Status recv_status1;
+    // MPI_Status recv_status2;
+    // MPI_Request recv_req1;
+    // MPI_Request recv_req2;
     MPI_Datatype datatype = MPI_FLOAT;
 
+    MPI_Request reqs[2]; //= {recv_req1, recv_req2};
     // Now start ring. At every step, for every rank, we iterate through
     // segments with wraparound and send and recv from our neighbors and reduce
     // locally. At the i'th iteration, sends segment (rank - i) and receives
     // segment (rank - i - 1).
+
+    std::cout << "Node Rank is "<<rank<<"\n";
 
     for (int i = 0; i < size - 1; i++)
     {
@@ -362,41 +420,66 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
                                        segment_sizes[send_chunk]]);
         if (rank%2 == 0) {
             if (nodeInFirstTree->parent != nullptr) {
+                std::cout<<"Receiving at "<<rank<<" from "<<nodeInFirstTree->parent->rank<<"\n";
                 MPI_Irecv(buffer, segment_sizes[recv_chunk],
-                        datatype, nodeInFirstTree->parent->rank, 0, MPI_COMM_WORLD, &recv_req1);
+                        datatype, nodeInFirstTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[0]);
             }
-            
-            MPI_Irecv(buffer, segment_sizes[recv_chunk],
-                    datatype, nodeInSecondTree->parent->rank, 0, MPI_COMM_WORLD, &recv_req2);
-        
-            MPI_Send(segment_send, segment_sizes[send_chunk],MPI_FLOAT, nodeInFirstTree->left->rank, 0, MPI_COMM_WORLD);
 
-            MPI_Send(segment_send, segment_sizes[send_chunk],MPI_FLOAT, nodeInFirstTree->right->rank, 0, MPI_COMM_WORLD);
+            if (nodeInSecondTree->parent != nullptr) {
+                std::cout<<"Receiving at "<<rank<<" from "<<nodeInSecondTree->parent->rank<<"\n";
+                MPI_Irecv(buffer, segment_sizes[recv_chunk],
+                        datatype, nodeInSecondTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[1]);
+            }
+
+            if (nodeInFirstTree->left != nullptr) {
+                
+                MPI_Send(segment_send, segment_sizes[send_chunk],MPI_FLOAT, nodeInFirstTree->left->rank, 0, MPI_COMM_WORLD);
+            }
+
+            if (nodeInFirstTree->right != nullptr)
+                MPI_Send(segment_send, segment_sizes[send_chunk],MPI_FLOAT, nodeInFirstTree->right->rank, 0, MPI_COMM_WORLD);
         } else {
-            if (nodeInFirstTree->parent != nullptr) {
+            if (nodeInSecondTree->parent != nullptr) {
+                std::cout<<"Receiving at "<<rank<<" from "<<nodeInSecondTree->parent->rank<<"\n";
                 MPI_Irecv(buffer, segment_sizes[recv_chunk],
-                        datatype, nodeInSecondTree->parent->rank, 0, MPI_COMM_WORLD, &recv_req1);
+                        datatype, nodeInSecondTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[0]);
             }
-            
-            MPI_Irecv(buffer, segment_sizes[recv_chunk],
-                    datatype, nodeInFirstTree->parent->rank, 0, MPI_COMM_WORLD, &recv_req2);
-        
-            MPI_Send(segment_send, segment_sizes[send_chunk],MPI_FLOAT, nodeInSecondTree->left->rank, 0, MPI_COMM_WORLD);
 
-            MPI_Send(segment_send, segment_sizes[send_chunk],MPI_FLOAT, nodeInSecondTree->right->rank, 0, MPI_COMM_WORLD);
+            if (nodeInFirstTree->parent != nullptr)
+                MPI_Irecv(buffer, segment_sizes[recv_chunk],
+                        datatype, nodeInFirstTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[1]);
 
+            if (nodeInSecondTree->left != nullptr)
+                MPI_Send(segment_send, segment_sizes[send_chunk],MPI_FLOAT, nodeInSecondTree->left->rank, 0, MPI_COMM_WORLD);
+
+            if (nodeInSecondTree->right != nullptr)
+                MPI_Send(segment_send, segment_sizes[send_chunk],MPI_FLOAT, nodeInSecondTree->right->rank, 0, MPI_COMM_WORLD);
         }
 
         float *segment_update = &(output[segment_ends[recv_chunk] -
                                          segment_sizes[recv_chunk]]);
 
         // Wait for recv to complete before reduction
-        MPI_Wait(&recv_req1, &recv_status);
-        MPI_Wait(&recv_req2, &recv_status);
+        std::cout<<"Waiting for recv\n";
+        // MPI_Request reqs[2] = {recv_req1, recv_req2};
+        assert(reqs != nullptr);
+        for (int i = 0; i < 2; i++) {
+            assert(reqs[i] != MPI_REQUEST_NULL);
+        }
+        MPI_Status statuses[2];
 
+        assert(statuses != nullptr);
+        MPI_Waitall(2, reqs, statuses);
+        // MPI_Wait(&recv_req1, &recv_status1);
+        // std::cout<<"One received\n";
+        // MPI_Wait(&recv_req2, &recv_status2);
+
+        std::cout<<"Reducing\n";
         reduce(segment_update, buffer, segment_sizes[recv_chunk]);
+        std::cout<<"Reducing complete\n";
     }
 
+    std::cout << "Finished for node with rank "<<rank<<"\n";
     // Free temporary memory.
     dealloc(buffer);
 }

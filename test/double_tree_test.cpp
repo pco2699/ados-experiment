@@ -7,7 +7,7 @@
 #include <iostream>
 #include <vector>
 
-#include "double_tree_collectives.h"
+#include "doubletree_collectives.h"
 
 void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterations) {
     // Initialize on CPU (no GPU device ID).
