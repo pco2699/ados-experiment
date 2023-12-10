@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
             100, 50, 10, 1
     };
 
-    int num_gpus = 2;
+    int num_gpus = 4;
 
     // Test on either CPU and GPU.
     if(input == "cpu") {
