@@ -227,10 +227,10 @@ void RecursiveAllreduce(float* data, size_t length, float** output_ptr) {
             segment_send = r_vec + cur_len;
         }
 
-        MPI_Send(segment_send, (int)cur_len, datatype, opponent, 0,
-                 MPI_COMM_WORLD);
         MPI_Irecv(buffer, (int)cur_len, datatype, opponent, 0, MPI_COMM_WORLD,
                   &recv_req);
+        MPI_Send(segment_send, (int)cur_len, datatype, opponent, 0,
+                 MPI_COMM_WORLD);
 
         MPI_Wait(&recv_req, &recv_status);
         if (opponent < rank) {
@@ -251,11 +251,10 @@ void RecursiveAllreduce(float* data, size_t length, float** output_ptr) {
     while (dist <= size / 2) {
         float *segment_send;
         int opponent = (rank + dist) % cur_size + int(rank / cur_size) * cur_size;
-        std::cout << "rank :" << rank << "opponent: " << opponent << '\n';
         segment_send = r_vec;
 
-        MPI_Send(segment_send, (int)cur_len, datatype, opponent, 0, MPI_COMM_WORLD);
         MPI_Irecv(buffer, (int)cur_len, datatype, opponent, 0, MPI_COMM_WORLD, &recv_req);
+        MPI_Send(segment_send, (int)cur_len, datatype, opponent, 0, MPI_COMM_WORLD);
         MPI_Wait(&recv_req, &recv_status);
 
         if (opponent < rank) {
