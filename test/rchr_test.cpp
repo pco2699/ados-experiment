@@ -85,7 +85,7 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
     // Assume that the environment variable has an integer in it.
     int mpi_local_rank = std::stoi(std::string(env_str));
     int gpu_to_use = mpi_local_rank % num_gpus;
-    InitCollectives(gpu_to_use);
+    RecursiveInitCollectives(gpu_to_use);
 
     // Get the MPI size and rank.
     int mpi_size;
