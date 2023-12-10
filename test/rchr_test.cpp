@@ -27,34 +27,32 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         auto size = sizes[i];
         auto iters = iterations[i];
 
-        float* data = new float[size];
-        //float seconds = 0.0f;
+        int8_t* data = new int8_t[size];
         
         float total_seconds = 0.0f;
         float total_bandwidth = 0.0f;
 
         for(size_t iter = 0; iter < iters; iter++) {
-            // Initialize data as a block of ones, which makes it easy to check for correctness.
+            // Initialize data within the range of int8_t
             for(size_t j = 0; j < size; j++) {
-                data[j] = (float)j;
+                data[j] = static_cast<int8_t>(j % 256 - 128); 
             }
 
-            float* output;
+            int8_t* output;
             timer.start();
             RecursiveAllreduce(data, size, &output);
-            //seconds += timer.seconds();
-            float iteration_time = timer.seconds(); // Measure the time for this iteration
-            total_seconds += iteration_time; // Add to total time
+            float iteration_time = timer.seconds();
+            total_seconds += iteration_time;
 
-            // Bandwidth calculation
-            size_t total_data_transferred = 2 * size * sizeof(float); // total data in bytes
-            float bandwidth = total_data_transferred / iteration_time; // bandwidth in bytes per second
+            // Bandwidth calculation for int8_t
+            size_t total_data_transferred = 2 * size * sizeof(int8_t);
+            float bandwidth = total_data_transferred / iteration_time;
             total_bandwidth += bandwidth;
 
-            // Check that we get the expected result.
+            // Validation logic for int8_t
             for(size_t j = 0; j < size; j++) {
-                if(output[j] != (float) j * mpi_size) {
-                    std::cerr << "Unexpected result from allreduce: " << data[j] << std::endl;
+                if(output[j] != static_cast<int8_t>((j % 256 - 128) * mpi_size)) {
+                    std::cerr << "Unexpected result from allreduce: " << static_cast<int>(data[j]) << std::endl;
                     return;
                 }
             }
