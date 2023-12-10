@@ -82,18 +82,23 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         throw std::runtime_error("Could not find OMPI_COMM_WORLD_LOCAL_RANK or SLURM_LOCALID!");
     }
 
-    // Assume that the environment variable has an integer in it.
-    int mpi_local_rank = std::stoi(std::string(env_str));
-    RecursiveInitCollectives(mpi_local_rank);
+    int total_gpus;
+    cudaError_t cuda_err = cudaGetDeviceCount(&total_gpus);
+    if (cuda_err != cudaSuccess) {
+        throw std::runtime_error("Failed to get the number of GPUs");
+    }
 
-    // Get the MPI size and rank.
-    int mpi_size;
-    if(MPI_Comm_size(MPI_COMM_WORLD, &mpi_size) != MPI_SUCCESS)
-        throw std::runtime_error("MPI_Comm_size failed with an error");
+    // Get the MPI size and rank
+    int mpi_size, mpi_rank;
+    MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
 
-    int mpi_rank;
-    if(MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank) != MPI_SUCCESS)
-        throw std::runtime_error("MPI_Comm_rank failed with an error");
+    // Assign a GPU based on the MPI rank
+    if (mpi_rank < total_gpus) {
+        RecursiveInitCollectives(mpi_rank);
+    } else {
+        throw std::runtime_error("Number of MPI processes exceeds available GPUs");
+    }
 
     cudaError_t err;
 
@@ -101,6 +106,10 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
     for(size_t i = 0; i < sizes.size(); i++) {
         auto size = sizes[i];
         auto iters = iterations[i];
+
+        //Added for bandwidth
+        float total_seconds = 0.0f;
+        float total_bandwidth = 0.0f;
 
         float* cpu_data = new float[size];
 
@@ -121,7 +130,14 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             float* output;
             timer.start();
             RecursiveAllreduce(data, size, &output);
-            seconds += timer.seconds();
+            float iteration_time = timer.seconds();
+            seconds += iteration_time;
+            total_seconds += iteration_time;
+
+            // Bandwidth calculation
+            size_t total_data_transferred = 2 * size * sizeof(float); // total data in bytes
+            float bandwidth = total_data_transferred / seconds; // bandwidth in bytes per second
+            total_bandwidth += bandwidth; 
 
             err = cudaMemcpy(cpu_data, output, sizeof(float) * size, cudaMemcpyDeviceToHost);
             if(err != cudaSuccess) { throw std::runtime_error("cudaMemcpy failed with an error"); }
@@ -137,11 +153,12 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             if(err != cudaSuccess) { throw std::runtime_error("cudaFree failed with an error"); }
         }
         if(mpi_rank == 0) {
-            std::cout << "Verified allreduce for size "
-                << size
-                << " ("
-                << seconds / iters
-                << " per iteration)" << std::endl;
+
+            float average_time = total_seconds / iters;
+            float average_bandwidth = total_bandwidth / iters;
+            std::cout << "Verified RH-allreduce for size " << size
+                      << " (Average time: " << average_time << " seconds per iteration, "
+                      << "Average Bandwidth: " << average_bandwidth << " Bytes/second)" << std::endl;
         }
 
         err = cudaFree(data);
