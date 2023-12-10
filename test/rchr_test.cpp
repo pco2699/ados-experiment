@@ -116,23 +116,23 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         float total_seconds = 0.0f;
         float total_bandwidth = 0.0f;
 
-        float* cpu_data = new float[size];
+        int8_t* cpu_data = new int8_t[size];
 
-        float* data;
-        err = cudaMalloc(&data, sizeof(float) * size);
+        int8_t* data;
+        err = cudaMalloc(&data, sizeof(int8_t) * size);
         if(err != cudaSuccess) { throw std::runtime_error("cudaMalloc failed with an error"); }
 
         float seconds = 0.0f;
         for(size_t iter = 0; iter < iters; iter++) {
             // Initialize data as a block of ones, which makes it easy to check for correctness.
             for(size_t j = 0; j < size; j++) {
-                cpu_data[j] = (float)j;
+                cpu_data[j] = static_cast<int8_t>(j % 256 - 128);
             }
 
-            err = cudaMemcpy(data, cpu_data, sizeof(float) * size, cudaMemcpyHostToDevice);
+            err = cudaMemcpy(data, cpu_data, sizeof(int8_t) * size, cudaMemcpyHostToDevice);
             if(err != cudaSuccess) { throw std::runtime_error("cudaMemcpy failed with an error"); }
 
-            float* output;
+            int8_t* output;
             timer.start();
             RecursiveAllreduce(data, size, &output);
             float iteration_time = timer.seconds();
@@ -140,16 +140,16 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             total_seconds += iteration_time;
 
             // Bandwidth calculation
-            size_t total_data_transferred = 2 * size * sizeof(float); // total data in bytes
+            size_t total_data_transferred = 2 * size * sizeof(int8_t); // total data in bytes
             float bandwidth = total_data_transferred / seconds; // bandwidth in bytes per second
             total_bandwidth += bandwidth; 
 
-            err = cudaMemcpy(cpu_data, output, sizeof(float) * size, cudaMemcpyDeviceToHost);
+            err = cudaMemcpy(cpu_data, output, sizeof(int8_t) * size, cudaMemcpyDeviceToHost);
             if(err != cudaSuccess) { throw std::runtime_error("cudaMemcpy failed with an error"); }
 
             // Check that we get the expected result.
             for(size_t j = 0; j < size; j++) {
-                if(cpu_data[j] != (float) j * mpi_size) {
+                if(cpu_data[j] != static_cast<int8_t>((j % 256 - 128) * mpi_size)) {
                     std::cerr << "Unexpected result from allreduce: " << cpu_data[j] << std::endl;
                     return;
                 }
