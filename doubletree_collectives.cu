@@ -327,6 +327,15 @@ Node *constructFirstTree(int size)
     return root;
 }
 
+void printData(int rank, float* data, size_t length) {
+    std::cout << "rank: " << rank << " data: ";
+    for(size_t i = 0; i < length; i++) {
+        std::cout << data[i] << ",";
+    }
+    std::cout << '\n';
+}
+
+
 void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
 {
     // Get MPI size and rank.
@@ -361,6 +370,13 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         segment_sizes[i]++;
     }
 
+    std::cout<<"Segment sizes: ";
+
+    for (const auto& size : segment_sizes) {
+        std::cout << size << " ";
+    }
+    std::cout << std::endl;
+
     // Compute where each chunk ends.
     std::vector<size_t> segment_ends(size);
     segment_ends[0] = segment_sizes[0];
@@ -383,7 +399,8 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
     // We know that segment_sizes[0] is going to be the largest buffer size,
     // because if there are any overflow elements at least one will be added to
     // the first segment.
-    float *buffer = alloc(segment_sizes[0]);
+    float *buffer1 = alloc(length);
+    float *buffer2 = alloc(length);
 
     Node *firstTree = constructFirstTree(size);
     Node *secondTree = firstTree->createTreeWithLessValue(firstTree, nullptr, size);
@@ -434,82 +451,92 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
     // locally. At the i'th iteration, sends segment (rank - i) and receives
     // segment (rank - i - 1).
 
-    std::cout << "Node Rank is " << rank << "\n";
+    // std::cout << "Node Rank is " << rank << "\n";
 
-    for (int i = 0; i < size - 1; i++)
-    {
-        int recv_chunk = (rank - i - 1 + size) % size;
-        int send_chunk = (rank - i + size) % size;
-        float *segment_send = &(output[segment_ends[send_chunk] -
-                                       segment_sizes[send_chunk]]);
+    // for (int i = 0; i < size - 1; i++)
+    // {
+        // int recv_chunk = (rank - i - 1 + size) % size;
+        // int send_chunk = (rank - i + size) % size;
+        // float *segment_send = &(output[segment_ends[send_chunk] -
+        //                                segment_sizes[send_chunk]]);
+        // std::cout<<"Segment send: "<<segment_send<<"\n";
+        // std::cout<<"Printing Segment_send\n";
+        // printData(rank, segment_send, segment_sizes[0]);
+
+        // std::cout<<"I am even node with rank="<<rank<<"\n";
+        if (nodeInFirstTree->parent != nullptr)
+        {
+            std::cout << "Receiving at " << rank << " from " << nodeInFirstTree->parent->rank << "\n";
+            recv_flags[0] = true;
+            MPI_Irecv(buffer1, length,
+                        datatype, nodeInFirstTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[0]);
+        }
+
+        if (nodeInSecondTree->parent != nullptr)
+        {
+            std::cout << "Receiving at " << rank << " from " << nodeInSecondTree->parent->rank << "\n";
+            recv_flags[1] = true;
+            // std::cout<<segment_sizes[recv_chunk]<<"\n";
+            MPI_Irecv(buffer2, length,
+                        datatype, nodeInSecondTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[1]);
+        }
+
         if (rank % 2 == 0)
         {
-            std::cout<<"I am even node with rank="<<rank<<"\n";
-            if (nodeInFirstTree->parent != nullptr)
-            {
-                std::cout << "Receiving at " << rank << " from " << nodeInFirstTree->parent->rank << "\n";
-                recv_flags[0] = true;
-                MPI_Irecv(buffer, segment_sizes[recv_chunk],
-                          datatype, nodeInFirstTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[0]);
-            }
-
-            if (nodeInSecondTree->parent != nullptr)
-            {
-                std::cout << "Receiving at " << rank << " from " << nodeInSecondTree->parent->rank << "\n";
-                recv_flags[1] = true;
-                std::cout<<segment_sizes[recv_chunk]<<"\n";
-                MPI_Irecv(buffer, segment_sizes[recv_chunk],
-                          datatype, nodeInSecondTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[1]);
-            }
-
             if (nodeInFirstTree->left != nullptr)
             {
                 std::cout<<"Sending from "<<rank<<" to "<< nodeInFirstTree->left->rank<<"\n";
-                MPI_Send(segment_send, segment_sizes[send_chunk], MPI_FLOAT, nodeInFirstTree->left->rank, 0, MPI_COMM_WORLD);
+                MPI_Send(output, length, MPI_FLOAT, nodeInFirstTree->left->rank, 0, MPI_COMM_WORLD);
             }
 
             if (nodeInFirstTree->right != nullptr) {
                 std::cout<<"Sending from "<<rank<<" to "<< nodeInFirstTree->right->rank<<"\n";
-                MPI_Send(segment_send, segment_sizes[send_chunk], MPI_FLOAT, nodeInFirstTree->right->rank, 0, MPI_COMM_WORLD);
+                MPI_Send(output, length, MPI_FLOAT, nodeInFirstTree->right->rank, 0, MPI_COMM_WORLD);
             }
 
         }
         else
         {
-            std::cout<<"I am odd node with rank="<<rank<<"\n";
-            if (nodeInSecondTree->parent != nullptr)
-            {
-                std::cout << "Receiving at " << rank << " from " << nodeInSecondTree->parent->rank << "\n";
-                recv_flags[0] = true;
-                MPI_Irecv(buffer, segment_sizes[recv_chunk],
-                          datatype, nodeInSecondTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[0]);
-            }
+            // std::cout<<"I am odd node with rank="<<rank<<"\n";
+            // if (nodeInSecondTree->parent != nullptr)
+            // {
+            //     std::cout << "Receiving at " << rank << " from " << nodeInSecondTree->parent->rank << "\n";
+            //     recv_flags[0] = true;
+            //     MPI_Irecv(buffer, segment_sizes[recv_chunk],
+            //               datatype, nodeInSecondTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[0]);
+            // }
 
-            if (nodeInFirstTree->parent != nullptr) {
-                std::cout << "Receiving at " << rank << " from " << nodeInFirstTree->parent->rank << "\n";
-                recv_flags[1] = true;
-                std::cout<<segment_sizes[recv_chunk]<<"\n";
-                MPI_Irecv(buffer, segment_sizes[recv_chunk],
-                          datatype, nodeInFirstTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[1]);
-            }
+            // if (nodeInFirstTree->parent != nullptr) {
+            //     std::cout << "Receiving at " << rank << " from " << nodeInFirstTree->parent->rank << "\n";
+            //     recv_flags[1] = true;
+            //     // std::cout<<"Segment size chunk at rank"<<rank<<" "<<segment_sizes[recv_chunk]<<"\n";
+            //     // std::cout<<"Buffer:"<<buffer<<"with address "<<&buffer<<"\n";
+            //     // std::cout<<"Req receiver addr "<<&reqs[1]<<" value="<<reqs[1]<<"\n";
+            //     MPI_Irecv(buffer, segment_sizes[recv_chunk],
+            //               datatype, nodeInFirstTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[1]);
+            //     // std::cout<<"Called IRecv\n";
+            // }
 
+            // std::cout<<"Child nodes = "<<nodeInSecondTree->left<<" and "<<nodeInSecondTree->right->rank<<"\n";
             if (nodeInSecondTree->left != nullptr) {
-                std::cout<<"Sending from "<<rank<<" to "<< nodeInFirstTree->left->rank<<"\n";
-                MPI_Send(segment_send, segment_sizes[send_chunk], MPI_FLOAT, nodeInSecondTree->left->rank, 0, MPI_COMM_WORLD);
+                // std::cout<<"I should not be here\n";
+                std::cout<<"Sending from "<<rank<<" to "<< nodeInSecondTree->left->rank<<"\n";
+                MPI_Send(output, length, MPI_FLOAT, nodeInSecondTree->left->rank, 0, MPI_COMM_WORLD);
             }
                 
             if (nodeInSecondTree->right != nullptr) {
-                std::cout<<"Sending from "<<rank<<" to "<< nodeInFirstTree->right->rank<<"\n";
-                MPI_Send(segment_send, segment_sizes[send_chunk], MPI_FLOAT, nodeInSecondTree->right->rank, 0, MPI_COMM_WORLD);
+                // std::cout<<"Yayy\n";
+                // std::cout<<"Right rank address is: "<<nodeInSecondTree
+                std::cout<<"Sending from "<<rank<<" to "<< nodeInSecondTree->right->rank<<"\n";
+                MPI_Send(output, length, MPI_FLOAT, nodeInSecondTree->right->rank, 0, MPI_COMM_WORLD);
             }
+        // }
 
-        }
-
-        float *segment_update = &(output[segment_ends[recv_chunk] -
-                                         segment_sizes[recv_chunk]]);
+        // float *segment_update = &(output[segment_ends[recv_chunk] -
+        //                                  segment_sizes[recv_chunk]]);
 
         // Wait for recv to complete before reduction
-        std::cout << "Waiting for recv at rank"<<rank<<"\n";
+        // std::cout << "Waiting for recv at rank"<<rank<<"\n";
         // MPI_Request reqs[2] = {recv_req1, recv_req2};
         assert(reqs != nullptr);
         for (int i = 0; i < 2; i++)
@@ -520,27 +547,42 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         MPI_Status recv_status;
         assert(statuses != nullptr);
 
-        std::cout<<"Rank="<<rank<<"-Flags"<<recv_flags[0]<<" "<<recv_flags[1]<<"\n";
+        // std::cout<<"Rank="<<rank<<"-Flags"<<recv_flags[0]<<" "<<recv_flags[1]<<"\n";
         if (recv_flags[0] && recv_flags[1]) {
             MPI_Waitall(2, reqs, statuses);
+
+            reduce(output, buffer1, length);
+            reduce(output, buffer2, length);
         } else if (recv_flags[0]) {
             MPI_Wait(&reqs[0], &statuses[0]);
+            reduce(output, buffer1, length); 
         } else {
             MPI_Wait(&reqs[1], &statuses[1]);
+            reduce(output, buffer2, length);
         }
         // std::cout<<"One received\n";
 
         // MPI_Wait(&recv_req2, &recv_status2);
 
-        std::cout << "Reducing\n";
-        reduce(segment_update, buffer, segment_sizes[recv_chunk]);
-        std::cout << "Reducing complete\n";
+        // std::cout << "Reducing\n";
+        // printData(rank, segment_update, segment_sizes[0]);
+        // std::cout<<"Buffer being added: \n";
+        // printData(rank, buffer1, segment_sizes[0]);
+        // printData(rank, buffer2, segment_sizes[0]);
+        // // reduce(segment_update, buffer1, segment_sizes[recv_chunk]);
+        // reduce(segment_update, buffer2, segment_sizes[recv_chunk]);
+
+        // std::cout << "Reducing complete\n";
+        
+        // printData(rank, segment_update, segment_sizes[0]);
     }
 
     std::cout << "Finished for node with rank " << rank << "\n";
     // Free temporary memory.
-    dealloc(buffer);
+    dealloc(buffer1);
+    dealloc(buffer2);
 }
+
 
 // The ring allgather. The lengths of the data chunks passed to this function
 // may differ across different devices. The output memory will be allocated and

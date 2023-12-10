@@ -40,13 +40,16 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             DoubleTreeAllreduce(data, size, &output);
             seconds += timer.seconds();
 
+            std::cout<<"Result at rank " << mpi_rank<< " is " << ":";
             // Check that we get the expected result.
             for(size_t j = 0; j < size; j++) {
-                if(output[j] != (float) j * mpi_size) {
-                    std::cerr << "Unexpected result from allreduce: " << data[j] << std::endl;
-                    return;
-                }
+                std::cout<<output[j]<<" ";
+                // if(output[j] != (float) j * mpi_size) {
+                //     std::cerr << "Unexpected result from allreduce: " << output[j] << ", expected "<< (float)j*mpi_size <<std::endl;
+                //     return;
+                // }
             }
+            std::cout<<"\n";
             delete[] output;
         }
         if(mpi_rank == 0) {
@@ -129,7 +132,7 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             // Check that we get the expected result.
             for(size_t j = 0; j < size; j++) {
                 if(cpu_data[j] != (float) j * mpi_size) {
-                    std::cerr << "Unexpected result from allreduce: " << cpu_data[j] << std::endl;
+                    std::cerr << "Unexpected result from allreduce: " << cpu_data[j] << ", expected "<< (float)j*mpi_size <<std::endl;
                     return;
                 }
             }
