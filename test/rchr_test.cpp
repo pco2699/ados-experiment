@@ -61,7 +61,7 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
     }
 }
 
-void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterations) {
+void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterations, int num_gpus) {
     // Get the local rank, which gets us the GPU we should be using.
     //
     // We must do this before initializing MPI, because initializing MPI requires having the right
@@ -82,23 +82,19 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         throw std::runtime_error("Could not find OMPI_COMM_WORLD_LOCAL_RANK or SLURM_LOCALID!");
     }
 
-    int total_gpus;
-    cudaError_t cuda_err = cudaGetDeviceCount(&total_gpus);
-    if (cuda_err != cudaSuccess) {
-        throw std::runtime_error("Failed to get the number of GPUs");
-    }
+    // Assume that the environment variable has an integer in it.
+    int mpi_local_rank = std::stoi(std::string(env_str));
+    int gpu_to_use = mpi_local_rank % num_gpus;
+    InitCollectives(gpu_to_use);
 
-    // Get the MPI size and rank
-    int mpi_size, mpi_rank;
-    MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
-    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
+    // Get the MPI size and rank.
+    int mpi_size;
+    if(MPI_Comm_size(MPI_COMM_WORLD, &mpi_size) != MPI_SUCCESS)
+        throw std::runtime_error("MPI_Comm_size failed with an error");
 
-    // Assign a GPU based on the MPI rank
-    if (mpi_rank < total_gpus) {
-        RecursiveInitCollectives(mpi_rank);
-    } else {
-        throw std::runtime_error("Number of MPI processes exceeds available GPUs");
-    }
+    int mpi_rank;
+    if(MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank) != MPI_SUCCESS)
+        throw std::runtime_error("MPI_Comm_rank failed with an error");
 
     cudaError_t err;
 
@@ -177,7 +173,7 @@ int main(int argc, char** argv) {
 
     // Buffer sizes used for tests.
     std::vector<size_t> buffer_sizes = {
-            32, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 8388608, 67108864, 536870912
+            0, 32, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 8388608, 67108864, 536870912
     };
 
     // Number of iterations to run for each buffer size.
@@ -187,11 +183,13 @@ int main(int argc, char** argv) {
             100, 50, 10, 1
     };
 
+    int num_gpus = 2;
+
     // Test on either CPU and GPU.
     if(input == "cpu") {
         TestCollectivesCPU(buffer_sizes, iterations);
     } else if(input == "gpu") {
-        TestCollectivesGPU(buffer_sizes, iterations);
+        TestCollectivesGPU(buffer_sizes, iterations, num_gpus);
     } else {
         std::cerr << "Unknown device type: " << input << std::endl
                   << "Usage: ./allreduce-test (cpu|gpu)" << std::endl;
