@@ -127,7 +127,7 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         auto size = sizes[i];
         auto iters = iterations[i];
 
-        checkGPUMemory("Before operation for size " + std::to_string(size));
+        //checkGPUMemory("Before operation for size " + std::to_string(size));
 
         //Added for bandwidth
         float total_seconds = 0.0f;
@@ -186,7 +186,7 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         err = cudaFree(data);
         if(err != cudaSuccess) { throw std::runtime_error("cudaFree failed with an error"); }
         delete[] cpu_data;
-        checkGPUMemory("After operation for size " + std::to_string(size));
+        //checkGPUMemory("After operation for size " + std::to_string(size));
     }
 }
 
