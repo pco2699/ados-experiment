@@ -79,48 +79,76 @@ void RecursiveInitCollectives(int device) {
 }
 
 // Allocate a new memory buffer on CPU or GPU.
-float* alloc(size_t size) {
+// float* alloc(size_t size) {
+//     if(global_state.device < 0) {
+//         // CPU memory allocation through standard allocator.
+//         return new float[size];
+//     } else {
+//         // GPU memory allocation through CUDA allocator.
+//         void* memory;
+//         cudaError_t error = cudaMalloc(&memory, sizeof(float) * size);
+//         if(error != cudaSuccess) {
+//             throw std::runtime_error("cudaMalloc failed with an error");
+//         }
+//         return (float*) memory;
+//     }
+// }
+
+// Deallocate an allocated memory buffer.
+// void dealloc(float* buffer) {
+//     if(global_state.device < 0) {
+//         // CPU memory deallocation through standard allocator.
+//         delete[] buffer;
+//     } else {
+//         // GPU memory deallocation through CUDA allocator.
+//         cudaFree(buffer);
+//     }
+// }
+
+// Allocate a new memory buffer on CPU or GPU for int8_t
+int8_t* alloc(size_t size) {
     if(global_state.device < 0) {
-        // CPU memory allocation through standard allocator.
-        return new float[size];
+        // CPU memory allocation
+        return new int8_t[size];
     } else {
-        // GPU memory allocation through CUDA allocator.
+        // GPU memory allocation
         void* memory;
-        cudaError_t error = cudaMalloc(&memory, sizeof(float) * size);
+        cudaError_t error = cudaMalloc(&memory, sizeof(int8_t) * size);
         if(error != cudaSuccess) {
             throw std::runtime_error("cudaMalloc failed with an error");
         }
-        return (float*) memory;
+        return (int8_t*) memory;
     }
 }
 
-// Deallocate an allocated memory buffer.
-void dealloc(float* buffer) {
+// Deallocate an allocated memory buffer for int8_t
+void dealloc(int8_t* buffer) {
     if(global_state.device < 0) {
-        // CPU memory deallocation through standard allocator.
+        // CPU memory deallocation
         delete[] buffer;
     } else {
-        // GPU memory deallocation through CUDA allocator.
+        // GPU memory deallocation
         cudaFree(buffer);
     }
 }
 
+
 // Copy data from one memory buffer to another on CPU or GPU.
 // Both buffers must resize on the same device.
-void copy(float* dst, float* src, size_t size) {
+void copy(int8_t* dst, int8_t* src, size_t size) {
     if(global_state.device < 0) {
         // CPU memory allocation through standard allocator.
-        std::memcpy((void*) dst, (void*) src, size * sizeof(float));
+        std::memcpy((void*) dst, (void*) src, size * sizeof(int8_t));
     } else {
         // GPU memory allocation through CUDA allocator.
-        cudaMemcpyAsync((void*) dst, (void*) src, size * sizeof(float),
+        cudaMemcpyAsync((void*) dst, (void*) src, size * sizeof(int8_t),
                         cudaMemcpyDeviceToDevice, global_state.stream);
         cudaStreamSynchronize(global_state.stream);
     }
 }
 
 // GPU kernel for adding two vectors elementwise.
-__global__ void kernel_add(const float* x, const float* y, const int N, float* out) {
+__global__ void kernel_add(const int8_t* x, const int8_t* y, const int N, int8_t* out) {
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N; i += blockDim.x * gridDim.x) {
       out[i] = x[i] + y[i];
     }
@@ -129,7 +157,7 @@ __global__ void kernel_add(const float* x, const float* y, const int N, float* o
 
 // Copy data from one memory buffer to another on CPU or GPU.
 // Both buffers must resize on the same device.
-void reduce(float* dst, float* src, size_t size) {
+void reduce(int8_t* dst, int8_t* src, size_t size) {
     if(global_state.device < 0) {
         // Accumulate values from `src` into `dst` on the CPU.
         for(size_t i = 0; i < size; i++) {
@@ -152,7 +180,7 @@ std::vector<size_t> AllgatherInputLengths(int size, size_t this_rank_length) {
     return lengths;
 }
 
-void PrintData(int rank, float* data, size_t length) {
+void PrintData(int rank, int8_t* data, size_t length) {
     std::cout << "rank: " << rank << " data: ";
     for(size_t i = 0; i < length; i++) {
         std::cout << data[i] << ",";
@@ -161,7 +189,7 @@ void PrintData(int rank, float* data, size_t length) {
 }
 
 
-void RecursiveAllreduce(float* data, size_t length, float** output_ptr) {
+void RecursiveAllreduce(int8_t* data, size_t length, int8_t** output_ptr) {
     // Get MPI size and rank.
     int rank;
     int mpi_error = MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -192,7 +220,7 @@ void RecursiveAllreduce(float* data, size_t length, float** output_ptr) {
     }
 
     // Allocate the output buffer.
-    float* output = alloc(length);
+    int8_t* output = alloc(length);
     *output_ptr =  output;
 
     // Copy your data to the output buffer to avoid modifying the input buffer.
@@ -202,23 +230,25 @@ void RecursiveAllreduce(float* data, size_t length, float** output_ptr) {
     // We know that segment_sizes[0] is going to be the largest buffer size,
     // because if there are any overflow elements at least one will be added to
     // the first segment.
-    float* buffer = alloc(length / 2);
+    int8_t* buffer = alloc(length / 2);
 
     int dist = size / 2;
     int cur_size = size;
 
     // r_vec shows the starting place
     // r_vec ~ r_vec + cur_len shows the range for each node's responsible range for Scatter Reduce
-    float* r_vec = output;
+    int8_t* r_vec = output;
     size_t cur_len = length / 2;
 
     MPI_Status recv_status;
     MPI_Request recv_req;
-    MPI_Datatype datatype = MPI_FLOAT;
+    //MPI_Datatype datatype = MPI_FLOAT;
+    MPI_Datatype datatype = MPI_INT8_T;
+
 
     // Scatter Reduce Vector Halving
     while (true) {
-        float *segment_send;
+        int8_t *segment_send;
         int opponent = (rank + dist) % cur_size + int(rank / cur_size) * cur_size;
         if (opponent < rank) {
             // the later half nodes will send top half of the vector
@@ -249,7 +279,7 @@ void RecursiveAllreduce(float* data, size_t length, float** output_ptr) {
 
     dist = 1;
     while (dist <= size / 2) {
-        float *segment_send;
+        int8_t *segment_send;
         int opponent = (rank + dist) % cur_size + int(rank / cur_size) * cur_size;
         segment_send = r_vec;
 
