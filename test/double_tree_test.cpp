@@ -40,16 +40,13 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             DoubleTreeAllreduce(data, size, &output);
             seconds += timer.seconds();
 
-            std::cout<<"Result at rank " << mpi_rank<< " is " << ":";
-            // Check that we get the expected result.
+
             for(size_t j = 0; j < size; j++) {
-                std::cout<<output[j]<<" ";
-                // if(output[j] != (float) j * mpi_size) {
-                //     std::cerr << "Unexpected result from allreduce: " << output[j] << ", expected "<< (float)j*mpi_size <<std::endl;
-                //     return;
-                // }
+                if(output[j] != (float) j * mpi_size) {
+                    std::cerr << "Unexpected result from allreduce: " << output[j] << ", expected "<< (float)j*mpi_size <<std::endl;
+                    return;
+                }
             }
-            std::cout<<"\n";
             delete[] output;
         }
         if(mpi_rank == 0) {
@@ -163,12 +160,14 @@ int main(int argc, char** argv) {
 
     // Buffer sizes used for tests.
     std::vector<size_t> buffer_sizes = {
-            32
+        0, 32, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 8388608, 67108864, 536870912
     };
 
     // Number of iterations to run for each buffer size.
     std::vector<size_t> iterations = {
-        1
+        100000, 100000, 100000, 100000,
+        1000, 1000, 1000, 1000,
+        100, 50, 10, 1
     };
 
     // Test on either CPU and GPU.
