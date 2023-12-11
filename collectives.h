@@ -2,6 +2,7 @@
 #define BAIDU_ALLREDUCE_COLLECTIVES_H_ value
 
 #include <cstddef>
+#include <cstdint> 
 
 #include <mpi.h>
 

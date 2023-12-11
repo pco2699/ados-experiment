@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <cstdint>
 
 #include <cuda_runtime.h>
 #include <cuda.h>
