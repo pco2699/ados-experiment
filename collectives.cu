@@ -120,8 +120,7 @@ void copy(int8_t* dst, int8_t* src, size_t size) {
 }
 
 // GPU kernel for adding two vectors elementwise.
-__global__ void kernel_add(const int8_t* x, const int8_t* y, const int N, export CUDA_ROOT=/usr/local/cuda
-export PATH=$PATH:$CUDA_ROOT/bin* out) {
+__global__ void kernel_add(const int8_t* x, const int8_t* y, const int N, int8_t* out) {
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N; i += blockDim.x * gridDim.x) {
       out[i] = x[i] + y[i];
     }
