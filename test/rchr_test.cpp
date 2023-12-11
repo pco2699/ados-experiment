@@ -180,16 +180,14 @@ int main(int argc, char** argv) {
     }
     std::string input(argv[1]);
 
-    // Buffer sizes used for tests.
     std::vector<size_t> buffer_sizes = {
-            0, 32, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 8388608, 67108864, 536870912
+        // Significantly increased sizes considering int8_t's smaller size
+        0, 128, 1024, 8192, 65536, 262144, 1048576, 4194304, 16777216, 67108864, 268435456, 1073741824
     };
 
-    // Number of iterations to run for each buffer size.
     std::vector<size_t> iterations = {
-            100000, 100000, 100000,
-            1000, 1000, 1000, 1000,
-            100, 50, 10, 1
+        // Higher iterations for smaller sizes, reduced for larger sizes
+        100000, 100000, 10000, 1000, 500, 250, 100, 50, 25, 10, 5, 2
     };
 
     int num_gpus = 4;
