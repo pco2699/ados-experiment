@@ -48,7 +48,7 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         auto size = sizes[i];
         auto iters = iterations[i];
 
-        float* data = new float[size];
+        int8_t* data = new int8_t[size];
         //float seconds = 0.0f;
         // Variables for measuring total time and bandwidth
         float total_seconds = 0.0f;
@@ -60,7 +60,7 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
                 data[j] = 1.0f;
             }
 
-            float* output;
+            int8_t* output;
             timer.start();
             RingAllreduce(data, size, &output);
             //seconds += timer.seconds();
@@ -68,13 +68,13 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             total_seconds += iteration_time; // Add to total time
 
             // Bandwidth calculation
-            size_t total_data_transferred = 2 * size * sizeof(float); // total data in bytes
+            size_t total_data_transferred = 2 * size * sizeof(int8_t); // total data in bytes
             float bandwidth = total_data_transferred / iteration_time; // bandwidth in bytes per second
             total_bandwidth += bandwidth;
 
             // Check that we get the expected result.
             for(size_t j = 0; j < size; j++) {
-                if(output[j] != (float) mpi_size) {
+                if(output[j] != static_cast<int8_t>((j % 256 - 128) * mpi_size)) {
                     std::cerr << "Unexpected result from allreduce: " << data[j] << std::endl;
                     return;
                 }
@@ -144,10 +144,10 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         float total_seconds = 0.0f;
         float total_bandwidth = 0.0f;
 
-        float* cpu_data = new float[size];
+        int8_t* cpu_data = new int8_t[size];
 
-        float* data;
-        err = cudaMalloc(&data, sizeof(float) * size);
+        int8_t* data;
+        err = cudaMalloc(&data, sizeof(int8_t) * size);
         if(err != cudaSuccess) { throw std::runtime_error("cudaMalloc failed with an error"); }
 
         float seconds = 0.0f;
@@ -157,10 +157,10 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
                 cpu_data[j] = 1.0f;
             }
 
-            err = cudaMemcpy(data, cpu_data, sizeof(float) * size, cudaMemcpyHostToDevice);
+            err = cudaMemcpy(data, cpu_data, sizeof(int8_t) * size, cudaMemcpyHostToDevice);
             if(err != cudaSuccess) { throw std::runtime_error("cudaMemcpy failed with an error"); }
 
-            float* output;
+            int8_t* output;
             timer.start();
             RingAllreduce(data, size, &output);
             float iteration_time = timer.seconds();
@@ -168,16 +168,16 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             total_seconds += iteration_time;
 
             // Bandwidth calculation
-            size_t total_data_transferred = 2 * size * sizeof(float); // total data in bytes
+            size_t total_data_transferred = 2 * size * sizeof(int8_t); // total data in bytes
             float bandwidth = total_data_transferred / seconds; // bandwidth in bytes per second
             total_bandwidth += bandwidth;            
 
-            err = cudaMemcpy(cpu_data, output, sizeof(float) * size, cudaMemcpyDeviceToHost);
+            err = cudaMemcpy(cpu_data, output, sizeof(int8_t) * size, cudaMemcpyDeviceToHost);
             if(err != cudaSuccess) { throw std::runtime_error("cudaMemcpy failed with an error"); }
 
             // Check that we get the expected result.
             for(size_t j = 0; j < size; j++) {
-                if(cpu_data[j] != (float) mpi_size) {
+                if(cpu_data[j] != static_cast<int8_t>((j % 256 - 128) * mpi_size)) {
                     std::cerr << "Unexpected result from allreduce: " << cpu_data[j] << std::endl;
                     return;
                 }
@@ -209,16 +209,36 @@ int main(int argc, char** argv) {
     }
     std::string input(argv[1]);
 
-    // Buffer sizes used for tests.
     std::vector<size_t> buffer_sizes = {
-        0, 32, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 8388608, 67108864, 536870912
+        256,
+        512,
+        2048,
+        8192,
+        32768,
+        131072,
+        524288,
+        2097152,
+        8388608,
+        33554432,
+        134217728,
+        536870912,
+        2147483648
     };
 
-    // Number of iterations to run for each buffer size.
     std::vector<size_t> iterations = {
-        100000, 100000, 100000, 100000,
-        1000, 1000, 1000, 1000,
-        100, 50, 10, 1
+        50000,
+        25000,
+        10000,
+        1000,
+        500,
+        250,
+        125,
+        60,
+        30,
+        15,
+        5,
+        2,
+        1
     };
 
     int num_gpus = 4;

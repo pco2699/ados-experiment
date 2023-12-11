@@ -181,13 +181,35 @@ int main(int argc, char** argv) {
     std::string input(argv[1]);
 
     std::vector<size_t> buffer_sizes = {
-        // Significantly increased sizes considering int8_t's smaller size
-        0, 128, 1024, 8192, 65536, 262144, 1048576, 4194304, 16777216, 67108864, 268435456, 1073741824
+        256,
+        512,
+        2048,
+        8192,
+        32768,
+        131072,
+        524288,
+        2097152,
+        8388608,
+        33554432,
+        134217728,
+        536870912,
+        2147483648
     };
 
     std::vector<size_t> iterations = {
-        // Higher iterations for smaller sizes, reduced for larger sizes
-        100000, 100000, 10000, 1000, 500, 250, 100, 50, 25, 10, 5, 2
+        50000,
+        25000,
+        10000,
+        1000,
+        500,
+        250,
+        125,
+        60,
+        30,
+        15,
+        5,
+        2,
+        1
     };
 
     int num_gpus = 4;

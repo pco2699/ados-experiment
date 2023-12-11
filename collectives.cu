@@ -79,23 +79,23 @@ void InitCollectives(int device) {
 }
 
 // Allocate a new memory buffer on CPU or GPU.
-float* alloc(size_t size) {
+int8_t* alloc(size_t size) {
     if(global_state.device < 0) {
         // CPU memory allocation through standard allocator.
-        return new float[size];
+        return new int8_t[size];
     } else {
         // GPU memory allocation through CUDA allocator.
         void* memory;
-        cudaError_t error = cudaMalloc(&memory, sizeof(float) * size);
+        cudaError_t error = cudaMalloc(&memory, sizeof(int8_t) * size);
         if(error != cudaSuccess) {
             throw std::runtime_error("cudaMalloc failed with an error");
         }
-        return (float*) memory;
+        return (int8_t*) memory;
     }
 }
 
 // Deallocate an allocated memory buffer.
-void dealloc(float* buffer) {
+void dealloc(int8_t* buffer) {
     if(global_state.device < 0) {
         // CPU memory deallocation through standard allocator.
         delete[] buffer;
@@ -107,20 +107,20 @@ void dealloc(float* buffer) {
 
 // Copy data from one memory buffer to another on CPU or GPU.
 // Both buffers must resize on the same device.
-void copy(float* dst, float* src, size_t size) {
+void copy(int8_t* dst, int8_t* src, size_t size) {
     if(global_state.device < 0) {
         // CPU memory allocation through standard allocator.
-        std::memcpy((void*) dst, (void*) src, size * sizeof(float));
+        std::memcpy((void*) dst, (void*) src, size * sizeof(int8_t));
     } else {
         // GPU memory allocation through CUDA allocator.
-        cudaMemcpyAsync((void*) dst, (void*) src, size * sizeof(float),
+        cudaMemcpyAsync((void*) dst, (void*) src, size * sizeof(int8_t),
                         cudaMemcpyDeviceToDevice, global_state.stream);
         cudaStreamSynchronize(global_state.stream);
     }
 }
 
 // GPU kernel for adding two vectors elementwise.
-__global__ void kernel_add(const float* x, const float* y, const int N, float* out) {
+__global__ void kernel_add(const int8_t* x, const fint8_tloat* y, const int N, float* out) {
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < N; i += blockDim.x * gridDim.x) {
       out[i] = x[i] + y[i];
     }
@@ -129,7 +129,7 @@ __global__ void kernel_add(const float* x, const float* y, const int N, float* o
 
 // Copy data from one memory buffer to another on CPU or GPU.
 // Both buffers must resize on the same device.
-void reduce(float* dst, float* src, size_t size) {
+void reduce(int8_t* dst, int8_t* src, size_t size) {
     if(global_state.device < 0) {
         // Accumulate values from `src` into `dst` on the CPU.
         for(size_t i = 0; i < size; i++) {
@@ -231,7 +231,7 @@ std::vector<size_t> AllgatherInputLengths(int size, size_t this_rank_length) {
  * (assuming no latency in connections) is constrained by the slowest interconnect between the nodes.
  *
  */
-void RingAllreduce(float* data, size_t length, float** output_ptr) {
+void RingAllreduce(int8_t* data, size_t length, int8_t** output_ptr) {
     // Get MPI size and rank.
     int rank;
     int mpi_error = MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -272,7 +272,7 @@ void RingAllreduce(float* data, size_t length, float** output_ptr) {
     assert(segment_ends[size - 1] == length);
 
     // Allocate the output buffer.
-    float* output = alloc(length);
+    int8_t* output = alloc(length);
     *output_ptr =  output;
 
     // Copy your data to the output buffer to avoid modifying the input buffer.
@@ -282,7 +282,7 @@ void RingAllreduce(float* data, size_t length, float** output_ptr) {
     // We know that segment_sizes[0] is going to be the largest buffer size,
     // because if there are any overflow elements at least one will be added to
     // the first segment.
-    float* buffer = alloc(segment_sizes[0]);
+    int8_t* buffer = alloc(segment_sizes[0]);
 
     // Receive from your left neighbor with wrap-around.
     const size_t recv_from = (rank - 1 + size) % size;
@@ -292,7 +292,8 @@ void RingAllreduce(float* data, size_t length, float** output_ptr) {
 
     MPI_Status recv_status;
     MPI_Request recv_req;
-    MPI_Datatype datatype = MPI_FLOAT;
+    //MPI_Datatype datatype = MPI_FLOAT;
+    MPI_Datatype datatype = MPI_INT8_T;
 
     // Now start ring. At every step, for every rank, we iterate through
     // segments with wraparound and send and recv from our neighbors and reduce
@@ -301,16 +302,16 @@ void RingAllreduce(float* data, size_t length, float** output_ptr) {
     for (int i = 0; i < size - 1; i++) {
         int recv_chunk = (rank - i - 1 + size) % size;
         int send_chunk = (rank - i + size) % size;
-        float* segment_send = &(output[segment_ends[send_chunk] -
+        int8_t* segment_send = &(output[segment_ends[send_chunk] -
                                    segment_sizes[send_chunk]]);
 
         MPI_Irecv(buffer, segment_sizes[recv_chunk],
                 datatype, recv_from, 0, MPI_COMM_WORLD, &recv_req);
 
         MPI_Send(segment_send, segment_sizes[send_chunk],
-                MPI_FLOAT, send_to, 0, MPI_COMM_WORLD);
+                MPI_INT8_T, send_to, 0, MPI_COMM_WORLD);
 
-        float *segment_update = &(output[segment_ends[recv_chunk] -
+        int8_t *segment_update = &(output[segment_ends[recv_chunk] -
                                          segment_sizes[recv_chunk]]);
 
         // Wait for recv to complete before reduction
@@ -327,11 +328,11 @@ void RingAllreduce(float* data, size_t length, float** output_ptr) {
         int send_chunk = (rank - i + 1 + size) % size;
         int recv_chunk = (rank - i + size) % size;
         // Segment to send - at every iteration we send segment (r+1-i)
-        float* segment_send = &(output[segment_ends[send_chunk] -
+        int8_t* segment_send = &(output[segment_ends[send_chunk] -
                                        segment_sizes[send_chunk]]);
 
         // Segment to recv - at every iteration we receive segment (r-i)
-        float* segment_recv = &(output[segment_ends[recv_chunk] -
+        int8_t* segment_recv = &(output[segment_ends[recv_chunk] -
                                        segment_sizes[recv_chunk]]);
         MPI_Sendrecv(segment_send, segment_sizes[send_chunk],
                 datatype, send_to, 0, segment_recv,
@@ -349,7 +350,7 @@ void RingAllreduce(float* data, size_t length, float** output_ptr) {
 //
 // For more information on the ring allgather, read the documentation for the
 // ring allreduce, which includes a ring allgather as the second stage.
-void RingAllgather(float* data, size_t length, float** output_ptr) {
+void RingAllgather(int8_t* data, size_t length, int8_t** output_ptr) {
     // Get MPI size and rank.
     int rank;
     int mpi_error = MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -381,7 +382,7 @@ void RingAllgather(float* data, size_t length, float** output_ptr) {
 
     // Allocate the output buffer and copy the input buffer to the right place
     // in the output buffer.
-    float* output = alloc(total_length);
+    int8_t* output = alloc(total_length);
     *output_ptr = output;
 
     copy(output + segment_ends[rank] - segment_sizes[rank],
@@ -394,7 +395,7 @@ void RingAllgather(float* data, size_t length, float** output_ptr) {
     const size_t send_to = (rank + 1) % size;
 
     // What type of data is being sent
-    MPI_Datatype datatype = MPI_FLOAT;
+    MPI_Datatype datatype = MPI_INT8_T;
 
     MPI_Status recv_status;
 
@@ -406,11 +407,11 @@ void RingAllgather(float* data, size_t length, float** output_ptr) {
         int send_chunk = (rank - i + size) % size;
         int recv_chunk = (rank - i - 1 + size) % size;
         // Segment to send - at every iteration we send segment (r+1-i)
-        float* segment_send = &(output[segment_ends[send_chunk] -
+        int8_t* segment_send = &(output[segment_ends[send_chunk] -
                                        segment_sizes[send_chunk]]);
 
         // Segment to recv - at every iteration we receive segment (r-i)
-        float* segment_recv = &(output[segment_ends[recv_chunk] -
+        int8_t* segment_recv = &(output[segment_ends[recv_chunk] -
                                        segment_sizes[recv_chunk]]);
         MPI_Sendrecv(segment_send, segment_sizes[send_chunk],
                 datatype, send_to, 0, segment_recv,
