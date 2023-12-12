@@ -134,6 +134,7 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             float* output;
             timer.start();
             RecursiveAllreduce(data, size, &output);
+            float iteration_time = timer.seconds();
             seconds += iteration_time;
             total_seconds += iteration_time;
 
