@@ -132,6 +132,7 @@ static MPIGlobalState global_state;
 // An exception is thrown if MPI or CUDA cannot be initialized.
 void DoubleTreeCollectives(int device)
 {
+    std::cout<<"Called Collectives\n";
     if (device < 0)
     {
         // CPU-only initialization.
@@ -349,6 +350,8 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
     if (mpi_error != MPI_SUCCESS)
         throw std::runtime_error("MPI_Comm_size failed with an error");
 
+    std::cout<<"Got size and rank\n"<< std::endl;
+
     // Check that the lengths given to every process are the same.
     std::vector<size_t> lengths = AllgatherInputLengths(size, length);
     for (size_t other_length : lengths)
@@ -359,34 +362,8 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         }
     }
 
-    // Partition the elements of the array into N approximately equal-sized
-    // chunks, where N is the MPI size.
-    const size_t segment_size = length / size;
-    std::vector<size_t> segment_sizes(size, segment_size);
+    std::cout<<"Lengths="<<lengths[0]<< std::endl;
 
-    const size_t residual = length % size;
-    for (size_t i = 0; i < residual; ++i)
-    {
-        segment_sizes[i]++;
-    }
-
-    // std::cout<<"Segment sizes: ";
-
-    // for (const auto& size : segment_sizes) {
-    //     std::cout << size << " ";
-    // }
-    // std::cout << std::endl;
-
-    // Compute where each chunk ends.
-    std::vector<size_t> segment_ends(size);
-    segment_ends[0] = segment_sizes[0];
-    for (size_t i = 1; i < segment_ends.size(); ++i)
-    {
-        segment_ends[i] = segment_sizes[i] + segment_ends[i - 1];
-    }
-
-    // The last segment should end at the very end of the buffer.
-    assert(segment_ends[size - 1] == length);
 
     // Allocate the output buffer.
     float *output = alloc(length);
@@ -441,7 +418,7 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         buffer2[i]=0;
         buffer1[i]=0;
     }
-
+    std::cout<<"Starting reduce\n";
     if (rank % 2 == 0) {
         if (nodeInSecondTree->parent != nullptr) {
             MPI_Isend(data, length, MPI_FLOAT, nodeInSecondTree->parent->rank, 0, MPI_COMM_WORLD, &recv_req);
@@ -484,8 +461,8 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
     // Wait for Send to opposite tree
     MPI_Wait(&recv_req, &recv_status);
 
-    // std::cout<<"After reduce phase: ";
-    // printData(rank, buffer2, length);
+    std::cout<<"After reduce phase: ";
+    printData(rank, buffer2, length);
     // Reduce phase is complete
     // Start broadcast
 
@@ -500,7 +477,6 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         } else {
             reduce(output, buffer2, length);
         }
-
 
         if (nodeInFirstTree->left != nullptr) {
             MPI_Send(output, length, MPI_FLOAT, nodeInFirstTree->left->rank, 0, MPI_COMM_WORLD);
@@ -539,6 +515,11 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
 
         reduce(output, buffer1, length);
     }
+
+    std::cout<<"After broadcast: ";
+    // printData(rank, , length);
+    // Reduce phase is complete
+    // Start broadcast
     dealloc(buffer1);
     dealloc(buffer2);
 }
