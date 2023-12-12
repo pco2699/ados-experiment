@@ -49,7 +49,9 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
         auto iters = iterations[i];
 
         float* data = new float[size];
-        float seconds = 0.0f;
+        //float seconds = 0.0f;
+        float total_seconds = 0.0f;
+        float total_bandwidth = 0.0f;
         for(size_t iter = 0; iter < iters; iter++) {
             // Initialize data as a block of ones, which makes it easy to check for correctness.
             for(size_t j = 0; j < size; j++) {
@@ -59,7 +61,14 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             float* output;
             timer.start();
             RingAllreduce(data, size, &output);
-            seconds += timer.seconds();
+            //seconds += timer.seconds();
+            float iteration_time = timer.seconds(); // Measure the time for this iteration
+            total_seconds += iteration_time; // Add to total time
+
+            // Bandwidth calculation
+            size_t total_data_transferred = 2 * size * sizeof(int8_t); // total data in bytes
+            float bandwidth = total_data_transferred / iteration_time; // bandwidth in bytes per second
+            total_bandwidth += bandwidth;
 
             // Check that we get the expected result.
             for(size_t j = 0; j < size; j++) {
@@ -71,11 +80,11 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
             delete[] output;
         }
         if(mpi_rank == 0) {
-            std::cout << "Verified allreduce for size "
-                << size
-                << " ("
-                << seconds / iters
-                << " per iteration)" << std::endl;
+            float average_time = total_seconds / iters;
+            float average_bandwidth = total_bandwidth / iters;
+            std::cout << "Verified Ring Allreduce for size " << size
+                      << " (Average time: " << average_time << " seconds per iteration, "
+                      << "Average Bandwidth: " << average_bandwidth << " Bytes/second)" << std::endl;
         }
 
         delete[] data;
@@ -178,7 +187,7 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
 
             float average_time = total_seconds / iters;
             float average_bandwidth = total_bandwidth / iters;
-            std::cout << "Verified allreduce for size " << size
+            std::cout << "Verified Ring allreduce for size " << size
                       << " (Average time: " << average_time << " seconds per iteration, "
                       << "Average Bandwidth: " << average_bandwidth << " Bytes/second)" << std::endl;
         }
