@@ -11,7 +11,7 @@ SRC:=$(wildcard *.cpp test/*.cpp)
 CU_SRC:=$(wildcard *.cu)
 OBJS:=$(SRC:.cpp=.o) $(CU_SRC:.cu=.o)
 
-all: $(RING_EXE_NAME) $(RECURSIVE_EXE_NAME)
+all: $(RING_EXE_NAME) $(RECURSIVE_EXE_NAME) $(DOUBLE_TREE_EXE_NAME)
 
 %.o: %.cpp
 	$(CC) -c $(CFLAGS) $< -o $@
@@ -22,18 +22,18 @@ all: $(RING_EXE_NAME) $(RECURSIVE_EXE_NAME)
 $(RING_EXE_NAME): collectives.o test/test.o timer.o
 	$(CC) -o $@ $(LDFLAGS) $^ $(LDFLAGS)
 
-#$(DOUBLE_TREE_EXE_NAME): double_tree_collectives.o test/double_tree_test.o timer.o
-#	$(CC) -o $@ $(LDFLAGS) $^ $(LDFLAGS)
-#
+$(DOUBLE_TREE_EXE_NAME): doubletree_collectives.o test/double_tree_test.o timer.o
+	$(CC) -o $@ $(LDFLAGS) $^ $(LDFLAGS)
+
 $(RECURSIVE_EXE_NAME): rchr_collectives.o test/rchr_test.o timer.o
 	$(CC) -o $@ $(LDFLAGS) $^ $(LDFLAGS)
 
 ring-test: $(RING_EXE_NAME)
 	$<
 
-#dbtree-test: $(DOUBLE_TREE_EXE_NAME)
-#	$<
-#
+dbtree-test: $(DOUBLE_TREE_EXE_NAME)
+	$<
+
 rchr-test: $(RECURSIVE_EXE_NAME)
 	$<
 
