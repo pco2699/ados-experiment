@@ -10,11 +10,9 @@
 #include "doubletree_collectives.h"
 
 void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterations) {
-    std::cout<<"hello";
     // Initialize on CPU (no GPU device ID).
     DoubleTreeCollectives(NO_DEVICE);
 
-    std::cout<<"Returned from init collective\n";
     // Get the MPI size and rank.
     int mpi_size;
     if(MPI_Comm_size(MPI_COMM_WORLD, &mpi_size) != MPI_SUCCESS)
@@ -24,7 +22,6 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
     if(MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank) != MPI_SUCCESS)
         throw std::runtime_error("MPI_Comm_rank failed with an error");
 
-    std::cout<<"Got size="<<mpi_size<<"\n";
     timer::Timer timer;
     for(size_t i = 0; i < sizes.size(); i++) {
         auto size = sizes[i];
@@ -32,22 +29,16 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
 
         float* data = new float[size];
         float seconds = 0.0f;
-        std::cout<<"iters="<<iters<<"\n";
         for(size_t iter = 0; iter < iters; iter++) {
             // Initialize data as a block of ones, which makes it easy to check for correctness.
-            std::cout<<"In loop for iter="<<iter<<"and size="<<size<<"\n";
-            std::cout<<"Initializing data for size="<<size << std::endl; 
 
             for(size_t j = 0; j < size; j++) {
                 data[j] = (float)j;
             }
             float* output;
             timer.start();
-            std::cout<<"Calling all reduce for size"<<size<< std::endl;
             DoubleTreeAllreduce(data, size, &output);
             seconds += timer.seconds();
-            std::cout<<"Finished all reduce for size"<<size<< std::endl;
-
 
             for(size_t j = 0; j < size; j++) {
                 if(output[j] != (float) j * mpi_size) {
@@ -165,21 +156,19 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::cout<<"Crazy1\n";
     std::string input(argv[1]);
 
-    std::cout<<"Crazy2\n";
     // Buffer sizes used for tests.
     std::vector<size_t> buffer_sizes = {
-        1024
+        0, 32, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 8388608, 67108864, 536870912
     };
 
-    std::cout<<"Crazy3";
     // Number of iterations to run for each buffer size.
     std::vector<size_t> iterations = {
-        1
+        100000, 100000, 100000, 100000,
+        1000, 1000, 1000, 1000,
+        100, 50, 10, 1
     };
-    std::cout<<"Crazy4";
     // Test on either CPU and GPU.
     if(input == "cpu") {
         TestCollectivesCPU(buffer_sizes, iterations);

@@ -86,8 +86,6 @@ void Node::printLevelOrder() const
                 q.push(current->right);
         }
         std::cout<<"\n";
-        // std::cout << current->rank << " ";
-
         // Enqueue left child
     }
     std::cout << "\n";
@@ -95,29 +93,24 @@ void Node::printLevelOrder() const
 
 Node *search(struct Node *root, int key)
 {
-    // std::cout<<"Calling search with key="<<key<<"and root->rank="<<root->rank<<"\n";
     // Base Cases: root is null or key is present at root
     if (root == NULL)
     {
-        // std::cout<<"Not Found:"<<key<<"\n";
         return root;
     }
 
     if (root->rank == key)
     {
-        // std::cout<<"Found here\n";
         return root;
     }
 
     // Key is greater than root's key
     if (root->rank < key)
     {
-        // std::cout <<"Moving right\n";
         return search(root->right, key);
     }
 
     // Key is smaller than root's key
-    // std::cout <<"Moving left\n";
     return search(root->left, key);
 }
 // MPI relies on global state for most of its internal operations, so we cannot
@@ -132,7 +125,7 @@ static MPIGlobalState global_state;
 // An exception is thrown if MPI or CUDA cannot be initialized.
 void DoubleTreeCollectives(int device)
 {
-    std::cout<<"Called Collectives\n";
+    // std::cout<<"Called Collectives\n";
     if (device < 0)
     {
         // CPU-only initialization.
@@ -283,9 +276,6 @@ std::vector<size_t> AllgatherInputLengths(int size, size_t this_rank_length)
 // size must be a power of 2
 Node *constructFirstTree(int size)
 {
-    // Node* leafs = new arr
-
-    // std::cout << "Constructing tree with size="<<size<<"\n";
     std::vector<Node *> level;
 
     int diff = 2;
@@ -294,12 +284,7 @@ Node *constructFirstTree(int size)
     {
         level.push_back(new Node(i, nullptr, nullptr, nullptr));
     }
-    // std::cout << level.size();
 
-    // for (const auto &node : level)
-    // {
-    //     // std::cout << node->rank << " ";
-    // }
     diff = diff * 2;
 
     while (diff <= size)
@@ -317,10 +302,6 @@ Node *constructFirstTree(int size)
         }
 
         diff = diff * 2;
-        // for (const auto& node: level) {
-        //     std::cout << node-> rank << " ";
-        // }
-        // std::cout << "\n";
     }
 
     Node *root = new Node(0, nullptr, nullptr, level[0]);
@@ -350,8 +331,6 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
     if (mpi_error != MPI_SUCCESS)
         throw std::runtime_error("MPI_Comm_size failed with an error");
 
-    std::cout<<"Got size and rank\n"<< std::endl;
-
     // Check that the lengths given to every process are the same.
     std::vector<size_t> lengths = AllgatherInputLengths(size, length);
     for (size_t other_length : lengths)
@@ -362,15 +341,9 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         }
     }
 
-    std::cout<<"Lengths="<<lengths[0]<< std::endl;
-
-
     // Allocate the output buffer.
     float *output = alloc(length);
     *output_ptr = output;
-
-    // Copy your data to the output buffer to avoid modifying the input buffer.
-    // copy(output, data, length);
 
     // Allocate a temporary buffer to store incoming data.
     // We know that segment_sizes[0] is going to be the largest buffer size,
@@ -391,26 +364,26 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
     if (rank == 0)
     {
         nodeInFirstTree = firstTree;
-        // std::cout << "Searching 2nd tree\n";
         nodeInSecondTree = search(secondTree->right, rank);
     }
     else if (rank == size - 1)
     {
-        // std::cout << "Searching 1st tree\n";
         nodeInFirstTree = search(firstTree->right, rank);
         nodeInSecondTree = secondTree;
     }
     else
     {
-        // std::cout << "Searching 1st tree\n";
         nodeInFirstTree = search(firstTree->right, rank);
-        // std::cout << "Searching 2nd tree\n";
         nodeInSecondTree = search(secondTree->right, rank);
     }
 
     MPI_Status recv_status;
+    MPI_Status* statuses = (MPI_Status*)malloc(2 * sizeof(MPI_Status));                
     MPI_Request recv_req;
+    MPI_Request reqs[2];
     MPI_Datatype datatype = MPI_FLOAT;
+
+    bool recv_flags[2];
 
     // Reduce Phase
 
@@ -418,19 +391,27 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         buffer2[i]=0;
         buffer1[i]=0;
     }
-    std::cout<<"Starting reduce\n";
     if (rank % 2 == 0) {
         if (nodeInSecondTree->parent != nullptr) {
             MPI_Isend(data, length, MPI_FLOAT, nodeInSecondTree->parent->rank, 0, MPI_COMM_WORLD, &recv_req);
         }
 
        if (nodeInFirstTree->left != nullptr) {
-            MPI_Recv(buffer1, length, datatype, nodeInFirstTree->left->rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Irecv(buffer1, length, datatype, nodeInFirstTree->left->rank, 0, MPI_COMM_WORLD, &reqs[0]);
+            recv_flags[0]= true;
        }
 
        if (nodeInFirstTree->right != nullptr) {
-            MPI_Recv(buffer2, length, datatype, nodeInFirstTree->right->rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Irecv(buffer2, length, datatype, nodeInFirstTree->right->rank, 0, MPI_COMM_WORLD, &reqs[1]);
+            recv_flags[1]=true;
        }
+        if (recv_flags[0] && recv_flags[1] ) {
+            MPI_Waitall(2, reqs, statuses);
+        } else if (recv_flags[0]) {
+            MPI_Wait(&reqs[0], &statuses[0]);
+        } else {
+            MPI_Wait(&reqs[1], &statuses[1]);
+        }
 
        reduce(buffer2, buffer1, length);
 
@@ -443,12 +424,22 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         }
 
        if (nodeInSecondTree->left != nullptr) {
-            MPI_Recv(buffer1, length, datatype, nodeInSecondTree->left->rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Irecv(buffer1, length, datatype, nodeInSecondTree->left->rank, 0, MPI_COMM_WORLD, &reqs[0]);
+            recv_flags[0]=true;
        }
 
        if (nodeInSecondTree->right != nullptr) {
-            MPI_Recv(buffer2, length, datatype, nodeInSecondTree->right->rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Irecv(buffer2, length, datatype, nodeInSecondTree->right->rank, 0, MPI_COMM_WORLD, &reqs[1]);
+            recv_flags[1]=true;
        }
+
+        if (recv_flags[0] && recv_flags[1] ) {
+            MPI_Waitall(2, reqs, statuses);
+        } else if (recv_flags[0]) {
+            MPI_Wait(&reqs[0], &statuses[0]);
+        } else {
+            MPI_Wait(&reqs[1], &statuses[1]);
+        }
 
        reduce(buffer2, buffer1, length);
 
@@ -457,18 +448,20 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         }
     }
 
-
     // Wait for Send to opposite tree
     MPI_Wait(&recv_req, &recv_status);
 
-    std::cout<<"After reduce phase: ";
-    printData(rank, buffer2, length);
     // Reduce phase is complete
     // Start broadcast
 
     for (int i = 0; i<length; i++) {
         output[i]=0;
     }
+
+    reqs[0] = MPI_REQUEST_NULL;
+    reqs[1] = MPI_REQUEST_NULL;
+    recv_flags[0] = false;
+    recv_flags[1] = false;
 
     if (rank % 2 == 0) {
         if (nodeInFirstTree->parent != nullptr) {
@@ -479,12 +472,15 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         }
 
         if (nodeInFirstTree->left != nullptr) {
-            MPI_Send(output, length, MPI_FLOAT, nodeInFirstTree->left->rank, 0, MPI_COMM_WORLD);
+            MPI_Isend(output, length, MPI_FLOAT, nodeInFirstTree->left->rank, 0, MPI_COMM_WORLD, &reqs[0]);
+            recv_flags[0]=true;
         }
         if (nodeInFirstTree->right != nullptr && nodeInFirstTree->parent != nullptr) {
-            MPI_Send(output, length, MPI_FLOAT, nodeInFirstTree->right->rank, 0, MPI_COMM_WORLD);
+            MPI_Isend(output, length, MPI_FLOAT, nodeInFirstTree->right->rank, 0, MPI_COMM_WORLD, &reqs[1]);
+            recv_flags[1]=true;
         } else if (nodeInFirstTree->right != nullptr && nodeInFirstTree->parent == nullptr) {
-            MPI_Send(buffer2, length, MPI_FLOAT, nodeInFirstTree->right->rank, 0, MPI_COMM_WORLD);
+            MPI_Isend(buffer2, length, MPI_FLOAT, nodeInFirstTree->right->rank, 0, MPI_COMM_WORLD, &reqs[1]);
+            recv_flags[1]=true;
         }
 
         if (nodeInSecondTree->parent != nullptr) {
@@ -501,12 +497,15 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         }
 
         if (nodeInSecondTree->left != nullptr) {
-            MPI_Send(output, length, MPI_FLOAT, nodeInSecondTree->left->rank, 0, MPI_COMM_WORLD);
+            MPI_Isend(output, length, MPI_FLOAT, nodeInSecondTree->left->rank, 0, MPI_COMM_WORLD, &reqs[0]);
+            recv_flags[0]=true;
         }
         if (nodeInSecondTree->right != nullptr && nodeInSecondTree->parent != nullptr) {
-            MPI_Send(output, length, MPI_FLOAT, nodeInSecondTree->right->rank, 0, MPI_COMM_WORLD);
+            MPI_Isend(output, length, MPI_FLOAT, nodeInSecondTree->right->rank, 0, MPI_COMM_WORLD, &reqs[1]);
+            recv_flags[1]=true;
         } else if(nodeInSecondTree->right != nullptr && nodeInSecondTree->parent == nullptr) {
-            MPI_Send(buffer2, length, MPI_FLOAT, nodeInSecondTree->right->rank, 0, MPI_COMM_WORLD);
+            MPI_Isend(buffer2, length, MPI_FLOAT, nodeInSecondTree->right->rank, 0, MPI_COMM_WORLD, &reqs[1]);
+            recv_flags[1]=true;
         }
 
         if (nodeInFirstTree->parent != nullptr) {
@@ -516,97 +515,20 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
         reduce(output, buffer1, length);
     }
 
-    std::cout<<"After broadcast: ";
-    // printData(rank, , length);
+    if (recv_flags[0] && recv_flags[1] ) {
+        MPI_Waitall(2, reqs, statuses);
+    } else if (recv_flags[0]) {
+        MPI_Wait(&reqs[0], &statuses[0]);
+    } else {
+        MPI_Wait(&reqs[1], &statuses[1]);
+    }
+
+
     // Reduce phase is complete
     // Start broadcast
     dealloc(buffer1);
     dealloc(buffer2);
 }
-
-//     int num_messages = 2;
-//     // MPI_Request* reqs = (MPI_Request*)malloc(num_messages * sizeof(MPI_Request));
-//     MPI_Request reqs[4]; 
-//     MPI_Status* statuses = (MPI_Status*)malloc(num_messages * sizeof(MPI_Status));                
-//     bool recv_flags[] = {false, false};
-
-//         if (nodeInFirstTree->parent != nullptr)
-//         {
-//             std::cout << "Receiving at " << rank << " from " << nodeInFirstTree->parent->rank << "\n";
-//             recv_flags[0] = true;
-//             MPI_Irecv(buffer1, length,
-//                         datatype, nodeInFirstTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[0]);
-//         }
-
-//         if (nodeInSecondTree->parent != nullptr)
-//         {
-//             std::cout << "Receiving at " << rank << " from " << nodeInSecondTree->parent->rank << "\n";
-//             recv_flags[1] = true;
-//             // std::cout<<segment_sizes[recv_chunk]<<"\n";
-//             MPI_Irecv(buffer2, length,
-//                         datatype, nodeInSecondTree->parent->rank, 0, MPI_COMM_WORLD, &reqs[1]);
-//         }
-
-//         if (rank % 2 == 0)
-//         {
-//             if (nodeInFirstTree->left != nullptr)
-//             {
-//                 std::cout<<"Sending from "<<rank<<" to "<< nodeInFirstTree->left->rank<<"\n";
-//                 MPI_ISend(output, length, MPI_FLOAT, nodeInFirstTree->left->rank, 0, MPI_COMM_WORLD, &reqs[2]);
-//             }
-
-//             if (nodeInFirstTree->right != nullptr) {
-//                 std::cout<<"Sending from "<<rank<<" to "<< nodeInFirstTree->right->rank<<"\n";
-//                 MPI_ISend(output, length, MPI_FLOAT, nodeInFirstTree->right->rank, 0, MPI_COMM_WORLD, &reqs[3]);
-//             }
-
-//         }
-//         else
-//         {
-//             if (nodeInSecondTree->left != nullptr) {
-//                 // std::cout<<"I should not be here\n";
-//                 std::cout<<"Sending from "<<rank<<" to "<< nodeInSecondTree->left->rank<<"\n";
-//                 MPI_ISend(output, length, MPI_FLOAT, nodeInSecondTree->left->rank, 0, MPI_COMM_WORLD, &reqs[2]);
-//             }
-                
-//             if (nodeInSecondTree->right != nullptr) {
-//                 // std::cout<<"Yayy\n";
-//                 // std::cout<<"Right rank address is: "<<nodeInSecondTree
-//                 std::cout<<"Sending from "<<rank<<" to "<< nodeInSecondTree->right->rank<<"\n";
-//                 MPI_ISend(output, length, MPI_FLOAT, nodeInSecondTree->right->rank, 0, MPI_COMM_WORLD, &reqs[2]);
-//             }
-
-//         assert(reqs != nullptr);
-//         for (int i = 0; i < 4; i++)
-//         {
-//             assert(reqs[i] != MPI_REQUEST_NULL);
-//         }
-
-//         MPI_Status recv_status;
-//         assert(statuses != nullptr);
-//     }
-//     // std::cout<<"At rank "<<rank<<"flags are "<<recv_flags[0]<<" and "<<recv_flags[1];
-//     if (recv_flags[0] && recv_flags[1] && reqs[2] && reqs[3]) {
-//         // std::cout<<"Waiting for all\n";
-//         MPI_Waitall(2, reqs, statuses);
-
-//         reduce(output, buffer1, length);
-//         reduce(output, buffer2, length);
-//     } else if (recv_flags[0]) {
-//         // std::cout<<"Waiting for first tree parent\n";
-//         MPI_Wait(&reqs[0], &statuses[0]);
-//         reduce(output, buffer1, length); 
-//     } else {
-//         // std::cout<<"Waiting for second tree parent\n";
-//         MPI_Wait(&reqs[1], &statuses[1]);
-//         reduce(output, buffer2, length);
-//     }
-//     std::cout << "Finished for node with rank " << rank << "\n";
-//     // Free temporary memory.
-//     dealloc(buffer1);
-//     dealloc(buffer2);
-// }
-
 /*
     If current node is odd (Need to recv from one odd node(if i am not root), and one even node)
         If target nodes are even:
@@ -652,84 +574,3 @@ void DoubleTreeAllreduce(float *data, size_t length, float **output_ptr)
 1(after reduce)->0
 2(after reduce)->3
 */
-
-
-// The ring allgather. The lengths of the data chunks passed to this function
-// may differ across different devices. The output memory will be allocated and
-// written into `output`.
-//
-// For more information on the ring allgather, read the documentation for the
-// ring allreduce, which includes a ring allgather as the second stage.
-// void RingAllgather(float *data, size_t length, float **output_ptr)
-// {
-//     // Get MPI size and rank.
-//     int rank;
-//     int mpi_error = MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-//     if (mpi_error != MPI_SUCCESS)
-//         throw std::runtime_error("MPI_Comm_rank failed with an error");
-
-//     int size;
-//     mpi_error = MPI_Comm_size(MPI_COMM_WORLD, &size);
-//     if (mpi_error != MPI_SUCCESS)
-//         throw std::runtime_error("MPI_Comm_size failed with an error");
-
-//     // Get the lengths of data provided to every process, so that we know how
-//     // much memory to allocate for the output buffer.
-//     std::vector<size_t> segment_sizes = AllgatherInputLengths(size, length);
-//     size_t total_length = 0;
-//     for (size_t other_length : segment_sizes)
-//     {
-//         total_length += other_length;
-//     }
-
-//     // Compute where each chunk ends.
-//     std::vector<size_t> segment_ends(size);
-//     segment_ends[0] = segment_sizes[0];
-//     for (size_t i = 1; i < segment_ends.size(); ++i)
-//     {
-//         segment_ends[i] = segment_sizes[i] + segment_ends[i - 1];
-//     }
-
-//     assert(segment_sizes[rank] == length);
-//     assert(segment_ends[size - 1] == total_length);
-
-//     // Allocate the output buffer and copy the input buffer to the right place
-//     // in the output buffer.
-//     float *output = alloc(total_length);
-//     *output_ptr = output;
-
-//     copy(output + segment_ends[rank] - segment_sizes[rank],
-//          data, segment_sizes[rank]);
-
-//     // Receive from your left neighbor with wrap-around.
-//     const size_t recv_from = (rank - 1 + size) % size;
-
-//     // Send to your right neighbor with wrap-around.
-//     const size_t send_to = (rank + 1) % size;
-
-//     // What type of data is being sent
-//     MPI_Datatype datatype = MPI_FLOAT;
-
-//     MPI_Status recv_status;
-
-//     // Now start pipelined ring allgather. At every step, for every rank, we
-//     // iterate through segments with wraparound and send and recv from our
-//     // neighbors. At the i'th iteration, rank r, sends segment (rank + 1 - i)
-//     // and receives segment (rank - i).
-//     for (size_t i = 0; i < size_t(size - 1); ++i)
-//     {
-//         int send_chunk = (rank - i + size) % size;
-//         int recv_chunk = (rank - i - 1 + size) % size;
-//         // Segment to send - at every iteration we send segment (r+1-i)
-//         float *segment_send = &(output[segment_ends[send_chunk] -
-//                                        segment_sizes[send_chunk]]);
-
-//         // Segment to recv - at every iteration we receive segment (r-i)
-//         float *segment_recv = &(output[segment_ends[recv_chunk] -
-//                                        segment_sizes[recv_chunk]]);
-//         MPI_Sendrecv(segment_send, segment_sizes[send_chunk],
-//                      datatype, send_to, 0, segment_recv,
-//                      segment_sizes[recv_chunk], datatype, recv_from,
-//                      0, MPI_COMM_WORLD, &recv_status);
-//     }
-// }
