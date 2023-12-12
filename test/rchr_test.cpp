@@ -186,9 +186,9 @@ int main(int argc, char** argv) {
 
     // Number of iterations to run for each buffer size.
     std::vector<size_t> iterations = {
-            100000, 100000, 100000,
-            1000, 1000, 1000, 1000,
-            100, 50, 10, 1
+        100000, 100000, 100000, 100000,
+        1000, 1000, 1000, 1000,
+        100, 50, 10, 1
     };
 
     // Test on either CPU and GPU.
