@@ -91,7 +91,7 @@ void TestCollectivesCPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
     }
 }
 
-void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterations, int num_gpus) {
+void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterations) {
     // Get the local rank, which gets us the GPU we should be using.
     //
     // We must do this before initializing MPI, because initializing MPI requires having the right
@@ -117,8 +117,8 @@ void TestCollectivesGPU(std::vector<size_t>& sizes, std::vector<size_t>& iterati
 
     // Assume that the environment variable has an integer in it.
     int mpi_local_rank = std::stoi(std::string(env_str));
-    int gpu_to_use = mpi_local_rank % num_gpus;
-    InitCollectives(gpu_to_use);
+    //int gpu_to_use = mpi_local_rank % num_gpus;
+    InitCollectives(mpi_local_rank);
 
     // Get the MPI size and rank.
     int mpi_size;
@@ -219,13 +219,13 @@ int main(int argc, char** argv) {
         100, 50, 10, 1
     };
 
-    int num_gpus = 2;
+    //int num_gpus = 2;
 
     // Test on either CPU and GPU.
     if(input == "cpu") {
         TestCollectivesCPU(buffer_sizes, iterations);
     } else if(input == "gpu") {
-        TestCollectivesGPU(buffer_sizes, iterations, num_gpus);
+        TestCollectivesGPU(buffer_sizes, iterations);
     } else {
         std::cerr << "Unknown device type: " << input << std::endl
                   << "Usage: ./allreduce-test (cpu|gpu)" << std::endl;
