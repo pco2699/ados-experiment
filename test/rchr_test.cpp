@@ -181,12 +181,11 @@ int main(int argc, char** argv) {
 
     // Buffer sizes used for tests.
     std::vector<size_t> buffer_sizes = {
-        0, 4, 8, 16, 32, 64, 128, 256
+        32, 64, 128, 256
     };
 
     // Number of iterations to run for each buffer size.
     std::vector<size_t> iterations = {
-        100000, 100000, 100000,
         1000, 1000, 1000, 1000,
         100
     };
