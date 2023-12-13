@@ -181,13 +181,14 @@ int main(int argc, char** argv) {
 
     // Buffer sizes used for tests.
     std::vector<size_t> buffer_sizes = {
-        0, 32, 256, 1024, 4096, 16384, 65536, 262144, 1048576, 4194304, 16777216, 32768000
+        0, 2, 4, 8, 16, 32, 64, 128, 256
     };
 
+    // Number of iterations to run for each buffer size.
     std::vector<size_t> iterations = {
-        10000, 10000, 10000, 10000,
-        500, 500, 500, 500,
-        100, 50, 10, 1
+        100000, 100000, 100000, 100000,
+        1000, 1000, 1000, 1000,
+        100
     };
 
     // Test on either CPU and GPU.
